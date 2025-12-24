@@ -1,5 +1,4 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
-import { autoUpdater } from 'electron-updater'; // [추가]
 import path from 'path';
 import fs from 'fs';
 
@@ -25,37 +24,12 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // [추가] 앱이 준비되고 창이 뜨면 업데이트 체크 시작 (배포 환경에서만 동작)
-  mainWindow.once('ready-to-show', () => {
-    if (!isDev) {
-      autoUpdater.checkForUpdatesAndNotify();
-    }
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// ----- [자동 업데이트 이벤트 핸들러] -----
-autoUpdater.on('update-available', () => {
-  // 업데이트가 있음을 알림 (필요 시 렌더러로 메시지 전송 가능)
-  console.log('Update available.');
-});
-
-autoUpdater.on('update-downloaded', () => {
-  // 다운로드가 완료되면 사용자에게 알리고 재시작 유도
-  dialog.showMessageBox({
-    type: 'info',
-    title: '업데이트 설치',
-    message: '새로운 버전이 다운로드되었습니다. 지금 재시작하여 설치하시겠습니까?',
-    buttons: ['재시작', '나중에']
-  }).then((returnValue) => {
-    if (returnValue.response === 0) autoUpdater.quitAndInstall();
-  });
-});
-
-// ----- [기존 IPC 핸들러들] -----
+// 1. 파일 복사 (기존 파일)
 ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath }) => {
   try {
     const destFolder = path.join(rootPath, relativePath);
@@ -73,6 +47,26 @@ ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath 
   }
 });
 
+// [추가] 1-1. 파일 쓰기 (생성된 파일용)
+ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, relativePath }) => {
+  try {
+    const destFolder = path.join(rootPath, relativePath);
+    const destPath = path.join(destFolder, fileName);
+
+    if (!fs.existsSync(destFolder)) {
+      fs.mkdirSync(destFolder, { recursive: true });
+    }
+
+    // Uint8Array 데이터를 Buffer로 변환하여 저장
+    fs.writeFileSync(destPath, Buffer.from(fileData));
+    return { success: true, savedPath: destPath };
+  } catch (error: any) {
+    console.error('File write error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// 2. 파일 존재 확인
 ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -82,6 +76,7 @@ ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   }
 });
 
+// 3. 파일 삭제
 ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -95,6 +90,7 @@ ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   }
 });
 
+// 4. 파일 열기
 ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -108,6 +104,7 @@ ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   }
 });
 
+// 5. 폴더 선택
 ipcMain.handle('dialog:openDirectory', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -120,16 +117,11 @@ ipcMain.handle('dialog:openDirectory', async () => {
 
 app.whenReady().then(() => {
   createWindow();
-
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });

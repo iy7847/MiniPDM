@@ -22,22 +22,24 @@ module.exports = {
         arch: ["x64"]
       }
     ],
-    icon: "resources/icon.ico"
+    // [확인] 이 부분이 아이콘 경로입니다.
+    icon: "resources/icon.ico" 
   },
   nsis: {
-    oneClick: false, // 사용자에게 설치 옵션 제공 (true면 묻지 않고 설치)
+    oneClick: false,
     perMachine: false,
     allowToChangeInstallationDirectory: true,
     shortcutName: "MiniPDM",
-    deleteAppDataOnUninstall: true
+    deleteAppDataOnUninstall: true,
+    // [추가 가능] 설치 프로그램(Setup.exe) 자체의 아이콘도 바꾸고 싶다면 아래 줄 추가
+    // installerIcon: "resources/icon.ico",
+    // uninstallerIcon: "resources/icon.ico"
   },
-  // [핵심] .env에서 읽어온 정보로 배포 설정 구성
   publish: [
     {
       provider: "github",
       owner: process.env.GITHUB_OWNER,
       repo: process.env.GITHUB_REPO,
-      // releaseType: "release" // draft(초안) 상태로 올릴지, 바로 release할지 설정 가능
     }
   ]
 };
