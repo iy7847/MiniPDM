@@ -7,16 +7,7 @@ import { FileDropZone } from '../components/common/FileDropZone';
 import { FilenameParserModal } from '../components/features/FilenameParserModal';
 import { Client, Material, EstimateItem, CURRENCY_SYMBOL, INITIAL_ITEM_FORM } from '../types/estimate';
 
-declare global {
-  interface Window {
-    fileSystem: {
-      saveFile: (sourcePath: string, rootPath: string, relativePath: string) => Promise<{ success: boolean; savedPath?: string; error?: string }>;
-      checkFileExists: (rootPath: string, relativePath: string) => Promise<boolean>;
-      deleteFile: (rootPath: string, relativePath: string) => Promise<{ success: boolean; error?: string }>;
-      openFile: (rootPath: string, relativePath: string) => Promise<{ success: boolean; error?: string }>;
-    };
-  }
-}
+// [수정] declare global 블록 삭제 (src/vite-env.d.ts에서 통합 관리되므로 충돌 방지)
 
 interface EstimateDetailProps {
   estimateId: string | null; 
@@ -30,7 +21,6 @@ export function EstimateDetail({ estimateId, onBack }: EstimateDetailProps) {
   const [companyRootPath, setCompanyRootPath] = useState<string>(''); 
   const [defaultExchangeRate, setDefaultExchangeRate] = useState(1400.0);
   const [discountPolicy, setDiscountPolicy] = useState<any>(null);
-  // [추가] 기본 임율 상태
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(50000);
   
   const [formData, setFormData] = useState({
@@ -97,13 +87,11 @@ export function EstimateDetail({ estimateId, onBack }: EstimateDetailProps) {
       if (user) {
         const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
         if (profile) {
-          // [수정] default_hourly_rate도 가져오기
           const { data: company } = await supabase.from('companies').select('root_path, default_exchange_rate, discount_policy_json, default_hourly_rate').eq('id', profile.company_id).single();
           rootPath = company?.root_path || '';
           setCompanyRootPath(rootPath);
           if (company?.default_exchange_rate) setDefaultExchangeRate(company.default_exchange_rate);
           if (company?.discount_policy_json) setDiscountPolicy(company.discount_policy_json);
-          // [추가] 임율 설정
           if (company?.default_hourly_rate) setDefaultHourlyRate(company.default_hourly_rate);
         }
       }
@@ -446,7 +434,6 @@ export function EstimateDetail({ estimateId, onBack }: EstimateDetailProps) {
         exchangeRate={formData.exchange_rate}
         editingItem={editingItem}
         discountPolicy={discountPolicy} 
-        // [추가] 기본 임율 전달
         defaultHourlyRate={defaultHourlyRate} 
         onSaveSuccess={async () => { await updateEstimateTotalAmount(currentEstimateId!); await fetchEstimateItems(currentEstimateId!); }}
         onSaveFiles={saveFilesToStorage}

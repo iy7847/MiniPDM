@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabaseClient';
 import Login from './pages/Login';
@@ -8,7 +8,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // [중요] 현재 페이지 상태 관리 (이 부분이 빠져서 에러가 났던 것입니다!)
+  // 현재 페이지 상태 관리
   // 'dashboard' | 'materials' ... 화면을 기억하는 변수입니다.
   const [currentPage, setCurrentPage] = useState('dashboard');
 
@@ -40,7 +40,6 @@ function App() {
     return <Login />;
   }
 
-  // [수정] Dashboard에 currentPage와 onNavigate 함수를 꼭 전달해야 합니다.
   return (
     <Dashboard 
       currentPage={currentPage} 
