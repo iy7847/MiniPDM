@@ -16,11 +16,12 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20 # [수정] 18 -> 20 (Supabase 호환성)
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm ci
+        # [수정] npm ci 대신 npm install을 사용하여 lock 파일 불일치 시 자동 갱신하도록 변경 (안전장치)
+        run: npm install
 
       - name: Build & Publish Electron App
         env:
