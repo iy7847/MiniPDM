@@ -7,12 +7,10 @@
   "description": "Smart Estimate & Order Management System for Job Shops",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && electron-builder --config electron-builder.config.js",
     "preview": "vite preview",
     "electron:dev": "vite",
-    "release": "tsc && vite build && electron-builder --publish always",
-    "// --- [추가된 자동 배포 스크립트] ---": "",
-    "// 설명: 버전을 올리고(git tag 생성), GitHub로 푸시하여 자동 배포를 시작합니다.": "",
+    "release": "tsc && vite build && electron-builder --config electron-builder.config.js --publish always",
     "deploy": "npm version patch && git push origin master --tags",
     "deploy:minor": "npm version minor && git push origin master --tags",
     "deploy:major": "npm version major && git push origin master --tags"

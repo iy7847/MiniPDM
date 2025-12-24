@@ -21,7 +21,7 @@ export default defineConfig({
             lib: {
               entry: 'electron/main.ts',
               formats: ['cjs'],
-              fileName: () => 'main.js', // [수정] 표준 .js 확장자 사용
+              fileName: () => 'main.js',
             },
             rollupOptions: {
               external: ['electron', 'path', 'fs', 'url', 'child_process'],
@@ -38,12 +38,12 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            emptyOutDir: false,
+            emptyOutDir: false, 
             minify: false,
             lib: {
               entry: 'electron/preload.ts',
               formats: ['cjs'],
-              fileName: () => 'preload.js', // [수정] 표준 .js 확장자 사용
+              fileName: () => 'preload.js',
             },
             rollupOptions: {
               external: ['electron'],
@@ -53,6 +53,8 @@ export default defineConfig({
       },
     ]),
   ],
+  // [핵심 수정] Electron 빌드 시 상대 경로 사용 (흰 화면 해결)
+  // 이 설정이 없으면 리소스 로딩 경로가 깨져서 화면이 나오지 않습니다.
   base: './', 
   server: {
     port: 5173,
