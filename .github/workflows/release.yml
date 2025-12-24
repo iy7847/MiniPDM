@@ -16,15 +16,16 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # [수정] 18 -> 20 (Supabase 호환성)
+          node-version: 20
           cache: 'npm'
 
       - name: Install Dependencies
-        # [수정] npm ci 대신 npm install을 사용하여 lock 파일 불일치 시 자동 갱신하도록 변경 (안전장치)
         run: npm install
 
       - name: Build & Publish Electron App
         env:
-          # GitHub Repository Settings > Secrets에 등록해야 함
+          # GitHub Secrets에서 가져올 변수들
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run release
