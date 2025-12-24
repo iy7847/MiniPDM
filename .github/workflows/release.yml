@@ -24,8 +24,13 @@ jobs:
 
       - name: Build & Publish Electron App
         env:
-          # GitHub Secrets에서 가져올 변수들
+          # [기존] GitHub Secrets
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          
+          # [추가] electron-builder 설정을 위한 환경 변수 직접 입력
+          # (사용자님의 리포지토리 정보로 설정했습니다)
+          GITHUB_OWNER: iy7847
+          GITHUB_REPO: MiniPDM
         run: npm run release
