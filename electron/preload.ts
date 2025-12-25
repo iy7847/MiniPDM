@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld('fileSystem', {
 });
 
 contextBridge.exposeInMainWorld('updater', {
-  onUpdateAvailable: (callback: any) => ipcRenderer.on('update-available', callback),
-  onUpdateDownloaded: (callback: any) => ipcRenderer.on('update-downloaded', callback),
+  // [수정] 이벤트 객체(_event) 대신 업데이트 정보(info)를 콜백으로 전달
+  onUpdateAvailable: (callback: (info: any) => void) => ipcRenderer.on('update-available', (_event, info) => callback(info)),
+  onUpdateDownloaded: (callback: (info: any) => void) => ipcRenderer.on('update-downloaded', (_event, info) => callback(info)),
   restart: () => ipcRenderer.send('restart_app'),
 });

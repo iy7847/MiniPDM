@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 
-// [추가] 타입 정의
+// 타입 정의 (src/vite-env.d.ts와 중복될 수 있으나 컴포넌트 독립성을 위해 포함하거나 병합 필요)
 declare global {
   interface Window {
     versions: {
       app: () => Promise<string>;
     };
     updater?: {
-      onUpdateAvailable: (callback: () => void) => void;
-      onUpdateDownloaded: (callback: () => void) => void;
-      // [추가] 재시작 함수 타입 정의
+      onUpdateAvailable: (callback: (info: any) => void) => void;
+      onUpdateDownloaded: (callback: (info: any) => void) => void;
       restart: () => void;
     };
   }
@@ -35,16 +34,28 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
 
     // 업데이트 이벤트 리스너
     if (window.updater) {
-      window.updater.onUpdateAvailable(() => setUpdateStatus('업데이트 다운로드 중...'));
+      window.updater.onUpdateAvailable((info: any) => {
+        setUpdateStatus(`업데이트 다운로드 중... (v${info.version})`);
+      });
       
-      window.updater.onUpdateDownloaded(() => {
-        // [수정] 다운로드 완료 시 재시작 여부 묻기
-        // confirm은 브라우저를 차단하므로, 실제로는 모달을 쓰는 게 좋지만 여기선 로직 연결에 집중합니다.
-        // setTimeout을 사용하여 렌더링 후 실행되도록 하여 입력 잠김 방지
+      window.updater.onUpdateDownloaded((info: any) => {
+        // 렌더링 사이클과 충돌 방지를 위해 setTimeout 사용
         setTimeout(() => {
-          if (confirm('새로운 버전이 다운로드되었습니다. 지금 재시작하여 설치하시겠습니까?')) {
+          // 릴리즈 노트 포맷팅
+          let releaseNotes = '';
+          if (info.releaseNotes) {
+             const notes = Array.isArray(info.releaseNotes) 
+               ? info.releaseNotes.map((n: any) => n.note).join('\n') 
+               : info.releaseNotes;
+             // HTML 태그 제거 (간단히)
+             const cleanNotes = notes.replace(/<[^>]*>?/gm, '');
+             releaseNotes = `\n\n[업데이트 내용]\n${cleanNotes}`;
+          }
+
+          const message = `새로운 버전(v${info.version})이 준비되었습니다.${releaseNotes}\n\n지금 재시작하여 설치하시겠습니까?`;
+
+          if (confirm(message)) {
              setUpdateStatus('재시작 중...');
-             // [추가] 메인 프로세스에 재시작 요청
              window.updater?.restart();
           } else {
              setUpdateStatus('업데이트 대기 중 (재시작 시 적용)');
@@ -70,6 +81,7 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
     <aside 
       className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-800 text-white flex flex-col transition-all duration-300 ease-in-out shadow-xl z-20 shrink-0`}
     >
+      {/* 로고 및 토글 버튼 */}
       <div className="p-4 flex items-center justify-between border-b border-slate-700 h-16">
         {!isCollapsed && <div className="text-xl font-bold truncate">MiniPDM</div>}
         <button 
@@ -80,6 +92,7 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
         </button>
       </div>
       
+      {/* 네비게이션 메뉴 */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         <SidebarButton page="dashboard" icon="📊" label="대시보드" />
         <SidebarButton page="materials" icon="🔩" label="소재 관리" />
@@ -88,7 +101,7 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
         <SidebarButton page="settings" icon="⚙️" label="환경 설정" />
       </nav>
 
-      {/* [추가] 버전 및 업데이트 정보 표시 */}
+      {/* 버전 및 업데이트 정보 표시 */}
       <div className="p-4 border-t border-slate-700 text-xs text-slate-500 text-center">
         {updateStatus ? (
           <div className="text-green-400 font-bold mb-1 animate-pulse">{updateStatus}</div>
@@ -98,6 +111,7 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
         {!isCollapsed && <div className="mt-2">© 2025 MiniPDM</div>}
       </div>
 
+      {/* 하단 로그아웃 */}
       <div className="p-4 border-t border-slate-700">
         <button
           onClick={onLogout}
