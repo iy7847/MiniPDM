@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'path';
 import fs from 'fs';
 
@@ -24,12 +25,30 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
+  // 업데이트 체크
+  mainWindow.once('ready-to-show', () => {
+    if (!isDev) {
+      autoUpdater.checkForUpdatesAndNotify();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// 1. 파일 복사 (기존 파일)
+// [추가] 앱 버전 반환
+ipcMain.handle('app:version', () => app.getVersion());
+
+// 업데이트 이벤트 전달
+autoUpdater.on('update-available', () => {
+  mainWindow?.webContents.send('update-available');
+});
+autoUpdater.on('update-downloaded', () => {
+  mainWindow?.webContents.send('update-downloaded');
+});
+
+// ... (기존 파일 핸들러들 동일하게 유지) ...
 ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath }) => {
   try {
     const destFolder = path.join(rootPath, relativePath);
@@ -47,7 +66,6 @@ ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath 
   }
 });
 
-// [추가] 1-1. 파일 쓰기 (생성된 파일용)
 ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, relativePath }) => {
   try {
     const destFolder = path.join(rootPath, relativePath);
@@ -57,7 +75,6 @@ ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, rela
       fs.mkdirSync(destFolder, { recursive: true });
     }
 
-    // Uint8Array 데이터를 Buffer로 변환하여 저장
     fs.writeFileSync(destPath, Buffer.from(fileData));
     return { success: true, savedPath: destPath };
   } catch (error: any) {
@@ -66,7 +83,6 @@ ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, rela
   }
 });
 
-// 2. 파일 존재 확인
 ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -76,7 +92,6 @@ ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 3. 파일 삭제
 ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -90,7 +105,6 @@ ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 4. 파일 열기
 ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -104,12 +118,12 @@ ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 5. 폴더 선택
-ipcMain.handle('dialog:openDirectory', async () => {
+ipcMain.handle('dialog:openDirectory', async (_event, defaultPath) => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
     title: '파일 저장소 루트 폴더 선택',
+    defaultPath: defaultPath || undefined
   });
   if (result.canceled) return null;
   return result.filePaths[0];
