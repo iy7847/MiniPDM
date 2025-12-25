@@ -1,7 +1,17 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import log from 'electron-log'; // [추가] 로깅 라이브러리
 import path from 'path';
 import fs from 'fs';
+
+// [설정] 로그 레벨 설정
+autoUpdater.logger = log;
+log.transports.file.level = 'info';
+
+// [중요] 코드 서명 검증 무시 (개인 개발자 인증서 없는 경우 필수)
+(autoUpdater as any).verifyUpdateCodeSignature = false;
+
+log.info('App starting...');
 
 let mainWindow: BrowserWindow | null;
 
@@ -25,9 +35,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // 앱이 준비되고 창이 뜨면 업데이트 체크 시작 (배포 환경에서만 동작)
+  // 앱이 준비되면 업데이트 체크 시작
   mainWindow.once('ready-to-show', () => {
     if (!isDev) {
+      log.info('Checking for updates...');
       autoUpdater.checkForUpdatesAndNotify();
     }
   });
@@ -37,26 +48,55 @@ function createWindow() {
   });
 }
 
-// [추가] 앱 버전 반환
-ipcMain.handle('app:version', () => app.getVersion());
+// ---------------------------------------------------------
+// [추가] 자동 업데이트 상세 로그 및 이벤트 처리
+// ---------------------------------------------------------
 
-// [수정] 업데이트 이벤트 전달 (info 포함)
+autoUpdater.on('checking-for-update', () => {
+  log.info('Checking for update...');
+});
+
 autoUpdater.on('update-available', (info) => {
+  log.info('Update available:', info);
   mainWindow?.webContents.send('update-available', info);
 });
 
+autoUpdater.on('update-not-available', (info) => {
+  log.info('Update not available:', info);
+});
+
+autoUpdater.on('error', (err) => {
+  log.error('Error in auto-updater:', err);
+  // 에러 내용을 UI로도 보내서 확인 가능하게 함 (선택 사항)
+  // mainWindow?.webContents.send('update-error', err.message);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  let log_message = "Download speed: " + progressObj.bytesPerSecond;
+  log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  log.info(log_message);
+});
+
 autoUpdater.on('update-downloaded', (info) => {
-  // 메인 프로세스에서 dialog를 띄우지 않고, 렌더러로 정보만 보냅니다.
-  // (UI 제어권을 React로 넘김)
+  log.info('Update downloaded');
   mainWindow?.webContents.send('update-downloaded', info);
 });
 
-// [추가] 재시작 IPC 핸들러
+// 재시작 요청 처리
 ipcMain.on('restart_app', () => {
-  autoUpdater.quitAndInstall();
+  log.info('Quitting and installing...');
+  autoUpdater.quitAndInstall(true, true); // true, true: 강제 종료 및 즉시 설치
 });
 
-// 1. 파일 저장
+// [추가] 앱 버전 반환
+ipcMain.handle('app:version', () => app.getVersion());
+
+
+// ---------------------------------------------------------
+// 기존 파일 시스템 핸들러 (유지)
+// ---------------------------------------------------------
+
 ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath }) => {
   try {
     const destFolder = path.join(rootPath, relativePath);
@@ -70,11 +110,11 @@ ipcMain.handle('file:save', async (_event, { sourcePath, rootPath, relativePath 
     fs.copyFileSync(sourcePath, destPath);
     return { success: true, savedPath: destPath };
   } catch (error: any) {
+    log.error('file:save error', error);
     return { success: false, error: error.message };
   }
 });
 
-// 1-1. 파일 쓰기 (생성된 파일용)
 ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, relativePath }) => {
   try {
     const destFolder = path.join(rootPath, relativePath);
@@ -84,16 +124,14 @@ ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, rela
       fs.mkdirSync(destFolder, { recursive: true });
     }
 
-    // Uint8Array 데이터를 Buffer로 변환하여 저장
     fs.writeFileSync(destPath, Buffer.from(fileData));
     return { success: true, savedPath: destPath };
   } catch (error: any) {
-    console.error('File write error:', error);
+    log.error('file:write error', error);
     return { success: false, error: error.message };
   }
 });
 
-// 2. 파일 존재 확인
 ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -103,7 +141,6 @@ ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 3. 파일 삭제
 ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -117,7 +154,6 @@ ipcMain.handle('file:delete', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 4. 파일 열기
 ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -131,7 +167,6 @@ ipcMain.handle('file:open', async (_event, { rootPath, relativePath }) => {
   }
 });
 
-// 5. 폴더 선택
 ipcMain.handle('dialog:openDirectory', async (_event, defaultPath) => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
