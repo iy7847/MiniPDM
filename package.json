@@ -1,7 +1,7 @@
 {
   "name": "minipdm",
   "private": true,
-  "version": "0.1.9",
+  "version": "0.1.10",
   "main": "dist-electron/main.js",
   "author": "MiniPDM Team",
   "description": "Smart Estimate & Order Management System for Job Shops",
