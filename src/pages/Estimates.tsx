@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { PageLayout } from '../components/common/PageLayout';
 import { EstimateDetail } from './EstimateDetail';
 
-export function Estimates() {
+export function Estimates({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [estimates, setEstimates] = useState<any[]>([]);
@@ -12,7 +12,7 @@ export function Estimates() {
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
-    status: 'DRAFT', 
+    status: 'DRAFT',
     keyword: ''
   });
 
@@ -24,7 +24,7 @@ export function Estimates() {
     setLoading(true);
     let query = supabase
       .from('estimates')
-      .select('*, clients!inner(name)') 
+      .select('*, clients!inner(name)')
       .order('created_at', { ascending: false });
 
     if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
@@ -49,7 +49,7 @@ export function Estimates() {
   };
 
   if (viewMode === 'detail') {
-    return <EstimateDetail estimateId={selectedId} onBack={handleBackToList} />;
+    return <EstimateDetail estimateId={selectedId} onBack={handleBackToList} onNavigate={onNavigate} />;
   }
 
   return (
@@ -58,16 +58,16 @@ export function Estimates() {
       actions={
         <div className="flex flex-col gap-2 w-full">
           <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded border">
-            <select className="border p-1 rounded text-sm font-bold text-slate-700" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}>
+            <select className="border p-1 rounded text-sm font-bold text-slate-700" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
               <option value="DRAFT">📝 작성중 (미제출)</option>
               <option value="SENT">✅ 제출완료</option>
               <option value="ALL">전체 보기</option>
             </select>
             <span className="text-xs text-slate-400">|</span>
-            <input type="date" className="border p-1 rounded text-sm" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} />
+            <input type="date" className="border p-1 rounded text-sm" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} />
             <span className="text-xs">~</span>
-            <input type="date" className="border p-1 rounded text-sm" value={filters.endDate} onChange={e => setFilters({...filters, endDate: e.target.value})} />
-            <input className="border p-1 rounded text-sm flex-1 min-w-[150px]" placeholder="프로젝트명 / 업체명 검색" value={filters.keyword} onChange={e => setFilters({...filters, keyword: e.target.value})} />
+            <input type="date" className="border p-1 rounded text-sm" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} />
+            <input className="border p-1 rounded text-sm flex-1 min-w-[150px]" placeholder="프로젝트명 / 업체명 검색" value={filters.keyword} onChange={e => setFilters({ ...filters, keyword: e.target.value })} />
           </div>
           <div className="flex justify-between items-center">
             {/* 총 견적 개수 표시 */}
@@ -100,38 +100,39 @@ export function Estimates() {
               estimates.map((est) => {
                 // [수정] DB에 저장된 total_amount는 이제 '원화(KRW)'입니다.
                 const totalKRW = est.total_amount || 0;
-                
+
                 // 외화 환산: 원화 / 환율
                 const exchangeRate = est.base_exchange_rate || 1;
-                const totalForeign = (est.currency !== 'KRW' && exchangeRate > 0) 
-                  ? totalKRW / exchangeRate 
+                const totalForeign = (est.currency !== 'KRW' && exchangeRate > 0)
+                  ? totalKRW / exchangeRate
                   : 0;
 
                 return (
-                <tr key={est.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => handleOpenDetail(est.id)}>
-                  <td className="px-6 py-4 text-sm text-slate-500">{new Date(est.created_at).toLocaleDateString()}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-xs font-bold rounded ${est.status === 'SENT' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {est.status === 'SENT' ? '제출됨' : '작성중'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm font-bold text-slate-700">{est.clients?.name}</td>
-                  <td className="px-6 py-4 text-sm text-slate-900">{est.project_name}</td>
-                  <td className="px-6 py-4 text-right text-sm font-bold text-blue-600">
-                    {/* 메인: 원화 표시 */}
-                    <div>₩ {totalKRW.toLocaleString()}</div>
-                    {/* 서브: 외화 환산 표시 (70% 크기) */}
-                    {est.currency !== 'KRW' && (
-                      <div className="text-xs text-slate-400 font-normal" style={{fontSize: '70%'}}>
-                        ≈ {totalForeign.toLocaleString(undefined, { maximumFractionDigits: 2 })} {est.currency}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button className="text-blue-500 hover:underline text-sm">열기</button>
-                  </td>
-                </tr>
-              )})
+                  <tr key={est.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => handleOpenDetail(est.id)}>
+                    <td className="px-6 py-4 text-sm text-slate-500">{new Date(est.created_at).toLocaleDateString()}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 text-xs font-bold rounded ${est.status === 'SENT' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {est.status === 'SENT' ? '제출됨' : '작성중'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{est.clients?.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900">{est.project_name}</td>
+                    <td className="px-6 py-4 text-right text-sm font-bold text-blue-600">
+                      {/* 메인: 원화 표시 */}
+                      <div>₩ {totalKRW.toLocaleString()}</div>
+                      {/* 서브: 외화 환산 표시 (70% 크기) */}
+                      {est.currency !== 'KRW' && (
+                        <div className="text-xs text-slate-400 font-normal" style={{ fontSize: '70%' }}>
+                          ≈ {totalForeign.toLocaleString(undefined, { maximumFractionDigits: 2 })} {est.currency}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <button className="text-blue-500 hover:underline text-sm">열기</button>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

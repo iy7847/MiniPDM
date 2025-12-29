@@ -4,26 +4,38 @@ import { PageLayout } from '../components/common/PageLayout';
 import { FormattedInput } from '../components/common/FormattedInput';
 import { NumberInput } from '../components/common/NumberInput';
 import { DiscountPolicyChart, DEFAULT_POLICY } from '../components/settings/DiscountPolicyChart';
-
-// [수정] declare global 블록 제거 (src/vite-env.d.ts로 통합됨)
+import { ExcelExportPreset, EXCEL_AVAILABLE_COLUMNS } from '../types/estimate';
 
 export function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [companyId, setCompanyId] = useState('');
-  const [activeTab, setActiveTab] = useState<'basic' | 'discount'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'discount' | 'quotation'>('basic');
   
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [form, setForm] = useState({
     name: '',
     biz_num: '',
+    ceo_name: '', // [추가] 대표자명
+    address: '',  // [추가] 주소
+    phone: '',    // [추가] 전화번호
+    fax: '',      // [추가] 팩스
+    email: '',    // [추가] 이메일
     root_path: '',
+    logo_path: '', 
+    seal_path: '', 
     default_exchange_rate: 1400, 
     default_hourly_rate: 50000,
     master_admin: '',
+    quotation_template_type: 'A',
     discount_policy: DEFAULT_POLICY,
   });
+
+  const [excelPresets, setExcelPresets] = useState<ExcelExportPreset[]>([]);
+  const [newPresetName, setNewPresetName] = useState('');
+
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
 
   useEffect(() => {
     fetchCompanyInfo();
@@ -49,18 +61,28 @@ export function Settings() {
         setCompanyId(profile.company_id);
         
         const { data: company } = await supabase.from('companies').select('*').eq('id', profile.company_id).single();
-        
         if (company) {
           setForm({
             name: company.name,
             biz_num: company.biz_num || '',
+            ceo_name: company.ceo_name || '', // [추가]
+            address: company.address || '',   // [추가]
+            phone: company.phone || '',       // [추가]
+            fax: company.fax || '',           // [추가]
+            email: company.email || '',       // [추가]
             root_path: company.root_path || '',
+            logo_path: company.logo_path || '',
+            seal_path: company.seal_path || '',
             default_exchange_rate: company.default_exchange_rate || 1400,
             default_hourly_rate: company.default_hourly_rate || 50000,
             master_admin: user.email || '',
+            quotation_template_type: company.quotation_template_type || 'A', 
             discount_policy: company.discount_policy_json || DEFAULT_POLICY,
           });
         }
+
+        const { data: presets } = await supabase.from('excel_export_presets').select('*').eq('company_id', profile.company_id).order('created_at');
+        setExcelPresets(presets || []);
       }
     }
     setLoading(false);
@@ -68,12 +90,10 @@ export function Settings() {
 
   const handleSave = async () => {
     if (!companyId) return;
-
     if (!form.root_path) {
       setNotification({ message: '공유 폴더 경로는 필수입니다.', type: 'error' });
       return;
     }
-
     setSaving(true);
     setNotification(null); 
 
@@ -83,25 +103,98 @@ export function Settings() {
         .update({
           name: form.name,
           biz_num: form.biz_num,
+          ceo_name: form.ceo_name, // [추가]
+          address: form.address,   // [추가]
+          phone: form.phone,       // [추가]
+          fax: form.fax,           // [추가]
+          email: form.email,       // [추가]
           root_path: form.root_path,
+          logo_path: form.logo_path,
+          seal_path: form.seal_path,
           default_exchange_rate: form.default_exchange_rate,
           default_hourly_rate: form.default_hourly_rate,
+          quotation_template_type: form.quotation_template_type, 
           discount_policy_json: form.discount_policy,
           updated_at: new Date().toISOString()
         })
         .eq('id', companyId);
 
-      if (error) {
-          setNotification({ message: `저장 실패: ${error.message}`, type: 'error' });
-      } else {
-          setNotification({ message: '회사 설정이 성공적으로 저장되었습니다.', type: 'success' });
-      }
-    } catch (err) {
+      if (error) throw error;
+      setNotification({ message: '회사 설정이 성공적으로 저장되었습니다.', type: 'success' });
+    } catch (err: any) {
       console.error(err);
-      setNotification({ message: '알 수 없는 오류가 발생했습니다.', type: 'error' });
+      setNotification({ message: `저장 실패: ${err.message}`, type: 'error' });
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAddPreset = async () => {
+    if (!newPresetName.trim()) return alert('프리셋 이름을 입력하세요.');
+    const { error } = await supabase.from('excel_export_presets').insert({
+      company_id: companyId,
+      name: newPresetName,
+      columns: ['part_no', 'part_name', 'qty', 'unit_price', 'supply_price'] 
+    });
+
+    if (error) alert('추가 실패: ' + error.message);
+    else {
+      setNewPresetName('');
+      fetchCompanyInfo(); 
+    }
+  };
+
+  const handleDeletePreset = async (id: string) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    await supabase.from('excel_export_presets').delete().eq('id', id);
+    fetchCompanyInfo();
+  };
+
+  const handleUpdatePresetColumns = async (id: string, newColumns: string[]) => {
+    setExcelPresets(prev => prev.map(p => p.id === id ? { ...p, columns: newColumns } : p));
+    await supabase.from('excel_export_presets').update({ columns: newColumns }).eq('id', id);
+  };
+
+  const addColumnToPreset = (presetId: string, columnId: string) => {
+    const preset = excelPresets.find(p => p.id === presetId);
+    if (!preset) return;
+    if (preset.columns.includes(columnId)) return; 
+
+    const newColumns = [...preset.columns, columnId];
+    handleUpdatePresetColumns(presetId, newColumns);
+  };
+
+  const removeColumnFromPreset = (presetId: string, columnId: string) => {
+    const preset = excelPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const newColumns = preset.columns.filter(c => c !== columnId);
+    handleUpdatePresetColumns(presetId, newColumns);
+  };
+
+  const onDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItemIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); 
+  };
+
+  const onDrop = (e: React.DragEvent, presetId: string, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedItemIndex === null) return;
+    if (draggedItemIndex === dropIndex) return;
+
+    const preset = excelPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    const newColumns = [...preset.columns];
+    const [movedItem] = newColumns.splice(draggedItemIndex, 1);
+    newColumns.splice(dropIndex, 0, movedItem);
+
+    handleUpdatePresetColumns(presetId, newColumns);
+    setDraggedItemIndex(null);
   };
 
   const handlePolicyChange = (newPolicy: any) => {
@@ -112,16 +205,22 @@ export function Settings() {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  // 폴더 선택 핸들러
   const handleSelectRootPath = async () => {
-    if (window.fileSystem && window.fileSystem.selectDirectory) {
-      // form.root_path를 인자로 전달하여 해당 경로에서 다이얼로그가 열리도록 함
+    if (window.fileSystem) {
       const path = await window.fileSystem.selectDirectory(form.root_path);
-      if (path) {
-        updateForm('root_path', path);
-      }
+      if (path) updateForm('root_path', path);
     } else {
-      setNotification({ message: 'Electron 환경에서만 폴더 선택 기능을 사용할 수 있습니다.', type: 'error' });
+      setNotification({ message: 'Electron 환경에서만 가능합니다.', type: 'error' });
+    }
+  };
+
+  const handleSelectImage = async (field: 'logo_path' | 'seal_path') => {
+    if (window.fileSystem) {
+      // @ts-ignore
+      const path = await window.fileSystem.selectImage?.();
+      if (path) updateForm(field, path);
+    } else {
+      setNotification({ message: 'Electron 환경에서만 가능합니다.', type: 'error' });
     }
   };
 
@@ -140,115 +239,180 @@ export function Settings() {
         )}
 
         <div className="flex border-b border-slate-200 shrink-0">
-          <button
-            onClick={() => setActiveTab('basic')}
-            className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${
-              activeTab === 'basic' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            기본 정보 설정
-          </button>
-          <button
-            onClick={() => setActiveTab('discount')}
-            className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${
-              activeTab === 'discount' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            할인율 정책 (Graph)
-          </button>
+          <button onClick={() => setActiveTab('basic')} className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'basic' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>기본 정보 설정</button>
+          <button onClick={() => setActiveTab('quotation')} className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'quotation' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>견적서/엑셀 설정</button>
+          <button onClick={() => setActiveTab('discount')} className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'discount' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>할인율 정책 (Graph)</button>
         </div>
 
         <div className="p-8 flex-1 overflow-y-auto">
-          {activeTab === 'basic' ? (
+          {/* [탭 1] 기본 정보 */}
+          {activeTab === 'basic' && (
             <div className="space-y-6 max-w-xl mx-auto">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">회사명</label>
-                <input className="w-full border p-2 rounded bg-slate-50 text-slate-500" value={form.name} disabled />
-              </div>
-              <div>
-                <FormattedInput 
-                  label="사업자등록번호" 
-                  type="biz_num" 
-                  value={form.biz_num} 
-                  onChange={(val) => updateForm('biz_num', val)} 
-                />
-              </div>
-              <div className="bg-slate-50 p-4 rounded border border-slate-200">
-                 <label className="block text-sm font-bold text-slate-700 mb-1">기본 적용 환율 (USD 기준)</label>
-                 <NumberInput 
-                   value={form.default_exchange_rate} 
-                   onChange={(val) => updateForm('default_exchange_rate', val)} 
-                 />
-              </div>
+              <div><label className="block text-sm font-bold text-slate-700 mb-1">회사명</label><input className="w-full border p-2 rounded bg-slate-50 text-slate-500" value={form.name} disabled /></div>
               
-              <div className="bg-orange-50 p-4 rounded border border-orange-200">
-                 <label className="block text-sm font-bold text-orange-800 mb-1">기본 임율 (가공비 계산용)</label>
-                 <p className="text-xs text-orange-600 mb-2">시간당 표준 가공 임율을 입력하세요. (단위: 원/Hr)</p>
-                 <NumberInput 
-                   value={form.default_hourly_rate} 
-                   onChange={(val) => updateForm('default_hourly_rate', val)} 
-                   className="text-orange-700 font-bold" 
-                 />
+              <div className="grid grid-cols-2 gap-4">
+                <div><FormattedInput label="사업자등록번호" type="biz_num" value={form.biz_num} onChange={(val) => updateForm('biz_num', val)} /></div>
+                <div><label className="block text-xs font-bold text-slate-500 mb-1">대표자명</label><input className="w-full border p-2 rounded text-sm" value={form.ceo_name} onChange={(e) => updateForm('ceo_name', e.target.value)} /></div>
               </div>
 
-              <div className="bg-blue-50 p-4 rounded border border-blue-200">
-                <label className="block text-sm font-bold text-blue-800 mb-1">📂 파일 저장소 루트 경로 (NAS/공유폴더)</label>
-                <p className="text-xs text-blue-600 mb-2">
-                  모든 도면 파일이 저장될 로컬 경로를 선택하거나 직접 입력하세요.<br/>
-                  (예: <code>\\NAS_Server\WorkData</code> 또는 <code>D:\MiniPDM_Files</code>)
-                </p>
-                <div className="flex gap-2">
-                  <input 
-                    className="w-full border border-blue-300 p-2 rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" 
-                    value={form.root_path} 
-                    onChange={(e) => updateForm('root_path', e.target.value)} 
-                    placeholder="경로를 입력하거나 폴더 선택 버튼을 누르세요"
-                  />
-                  <button 
-                    onClick={handleSelectRootPath}
-                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 shadow-sm whitespace-nowrap flex items-center gap-1"
-                  >
-                    <span>📁</span> 폴더 선택
-                  </button>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1">주소 (Address)</label><input className="w-full border p-2 rounded text-sm" value={form.address} onChange={(e) => updateForm('address', e.target.value)} placeholder="견적서에 표시될 주소를 입력하세요" /></div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div><FormattedInput label="전화번호 (Tel)" type="phone" value={form.phone} onChange={(val) => updateForm('phone', val)} /></div>
+                <div><FormattedInput label="팩스 (Fax)" type="phone" value={form.fax} onChange={(val) => updateForm('fax', val)} /></div>
+              </div>
+              
+              <div><FormattedInput label="이메일 (Email)" type="email" value={form.email} onChange={(val) => updateForm('email', val)} /></div>
+
+              <div className="h-px bg-slate-200 my-4"></div>
+
+              <div className="bg-slate-50 p-4 rounded border border-slate-200"><label className="block text-sm font-bold text-slate-700 mb-1">기본 적용 환율 (USD 기준)</label><NumberInput value={form.default_exchange_rate} onChange={(val) => updateForm('default_exchange_rate', val)} /></div>
+              <div className="bg-orange-50 p-4 rounded border border-orange-200"><label className="block text-sm font-bold text-orange-800 mb-1">기본 임율 (가공비 계산용)</label><NumberInput value={form.default_hourly_rate} onChange={(val) => updateForm('default_hourly_rate', val)} className="text-orange-700 font-bold" /></div>
+              <div className="bg-blue-50 p-4 rounded border border-blue-200"><label className="block text-sm font-bold text-blue-800 mb-1">📂 파일 저장소 루트 경로</label><div className="flex gap-2"><input className="w-full border border-blue-300 p-2 rounded text-sm font-mono" value={form.root_path} onChange={(e) => updateForm('root_path', e.target.value)} /><button onClick={handleSelectRootPath} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">📂 선택</button></div></div>
+            </div>
+          )}
+
+          {/* [탭 2] 견적서/엑셀 설정 */}
+          {activeTab === 'quotation' && (
+            <div className="space-y-12 max-w-4xl mx-auto">
+              
+              {/* 1. 견적서 템플릿 설정 */}
+              <div className="bg-white p-6 rounded border border-slate-200 shadow-sm">
+                <h3 className="text-lg font-bold text-blue-800 mb-4 border-b pb-2">📄 견적서 양식 (Template)</h3>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  {['A', 'B', 'C'].map((type) => (
+                    <div 
+                      key={type}
+                      onClick={() => updateForm('quotation_template_type', type)}
+                      className={`cursor-pointer border-2 rounded-lg p-4 flex flex-col items-center gap-2 transition-all ${
+                        form.quotation_template_type === type ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300'
+                      }`}
+                    >
+                      <div className="w-16 h-20 bg-white border border-slate-300 shadow-sm flex items-center justify-center text-xs text-slate-400">
+                        {type === 'A' ? 'Modern' : type === 'B' ? 'Classic' : 'Detail'}
+                      </div>
+                      <span className={`font-bold ${form.quotation_template_type === type ? 'text-blue-700' : 'text-slate-600'}`}>Type {type}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <h4 className="text-sm font-bold text-slate-700 mb-3">🖼️ 로고 및 직인</h4>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">회사 로고 (상단)</label>
+                    <div className="flex gap-2">
+                      <input className="w-full border p-2 rounded text-xs text-slate-500" value={form.logo_path} readOnly placeholder="이미지 선택..." />
+                      <button onClick={() => handleSelectImage('logo_path')} className="bg-slate-600 text-white px-3 py-2 rounded text-xs font-bold whitespace-nowrap">찾기</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">직인/도장 (서명란)</label>
+                    <div className="flex gap-2">
+                      <input className="w-full border p-2 rounded text-xs text-slate-500" value={form.seal_path} readOnly placeholder="이미지 선택..." />
+                      <button onClick={() => handleSelectImage('seal_path')} className="bg-slate-600 text-white px-3 py-2 rounded text-xs font-bold whitespace-nowrap">찾기</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
-                <h4 className="font-bold text-blue-800 mb-1">💡 인터랙티브 할인율 정책</h4>
-                <p className="text-sm text-blue-700">
-                  각 난이도별(A~F) 수량에 따른 할인율을 그래프의 점을 <strong>드래그</strong>하여 설정하세요.<br/>
-                  설정된 할인율은 견적 작성 시 수량과 난이도에 따라 자동 적용됩니다.
-                </p>
-              </div>
-              
-              <DiscountPolicyChart 
-                policyData={form.discount_policy} 
-                onChange={handlePolicyChange} 
-              />
-              
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-center text-xs mt-4">
-                <div className="p-2 bg-blue-100 rounded text-blue-800 font-bold">A: 매우 쉬움</div>
-                <div className="p-2 bg-green-100 rounded text-green-800 font-bold">B: 쉬움</div>
-                <div className="p-2 bg-yellow-100 rounded text-yellow-800 font-bold">C: 보통</div>
-                <div className="p-2 bg-orange-100 rounded text-orange-800 font-bold">D: 어려움</div>
-                <div className="p-2 bg-red-100 rounded text-red-800 font-bold">E: 매우 어려움</div>
-                <div className="p-2 bg-slate-200 rounded text-slate-800 font-bold">F: 불가/연구</div>
+
+              {/* 2. 엑셀 내보내기 프리셋 관리 (Drag & Drop) */}
+              <div className="bg-white p-6 rounded border border-slate-200 shadow-sm">
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                  <h3 className="text-lg font-bold text-green-700">📊 엑셀 내보내기 양식 (Preset)</h3>
+                  <div className="flex gap-2">
+                    <input className="border p-1.5 rounded text-sm" placeholder="새 양식 이름" value={newPresetName} onChange={e => setNewPresetName(e.target.value)} />
+                    <button onClick={handleAddPreset} className="bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold">+ 추가</button>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  {excelPresets.length === 0 && <p className="text-slate-400 text-center py-4">등록된 양식이 없습니다.</p>}
+                  {excelPresets.map(preset => (
+                    <div key={preset.id} className="border rounded-lg p-5 bg-slate-50">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="font-bold text-lg text-slate-800">📌 {preset.name}</span>
+                        <button onClick={() => handleDeletePreset(preset.id)} className="text-red-500 hover:text-red-700 text-xs font-bold border border-red-200 bg-white px-2 py-1 rounded">삭제</button>
+                      </div>
+                      
+                      <div className="flex gap-4 h-64">
+                        {/* 왼쪽: 사용 가능한 컬럼 */}
+                        <div className="flex-1 flex flex-col border rounded bg-white overflow-hidden">
+                          <div className="bg-slate-100 p-2 text-xs font-bold text-slate-500 border-b text-center">사용 가능 항목 (클릭하여 추가)</div>
+                          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                            {EXCEL_AVAILABLE_COLUMNS.filter(col => !preset.columns.includes(col.id)).map(col => (
+                              <button
+                                key={col.id}
+                                onClick={() => addColumnToPreset(preset.id, col.id)}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-green-50 hover:text-green-700 rounded border border-transparent hover:border-green-200 transition-colors"
+                              >
+                                + {col.label}
+                              </button>
+                            ))}
+                            {EXCEL_AVAILABLE_COLUMNS.filter(col => !preset.columns.includes(col.id)).length === 0 && (
+                              <div className="text-center text-xs text-slate-300 py-4">모두 선택됨</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 가운데 화살표 */}
+                        <div className="flex flex-col justify-center items-center text-slate-400">
+                          <span>➡</span>
+                        </div>
+
+                        {/* 오른쪽: 선택된 컬럼 (순서 변경 가능) */}
+                        <div className="flex-1 flex flex-col border rounded bg-white overflow-hidden border-green-200">
+                          <div className="bg-green-100 p-2 text-xs font-bold text-green-800 border-b border-green-200 text-center">선택된 항목 (드래그로 순서 변경)</div>
+                          <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-green-50/30">
+                            {preset.columns.map((colId, index) => {
+                              const colDef = EXCEL_AVAILABLE_COLUMNS.find(c => c.id === colId);
+                              return (
+                                <div
+                                  key={colId}
+                                  draggable
+                                  onDragStart={(e) => onDragStart(e, index)}
+                                  onDragOver={onDragOver}
+                                  onDrop={(e) => onDrop(e, preset.id, index)}
+                                  className="flex justify-between items-center px-3 py-2 bg-white border border-slate-200 rounded shadow-sm cursor-move hover:border-blue-400 transition-colors"
+                                >
+                                  <span className="text-sm font-bold text-slate-700">
+                                    <span className="text-slate-300 mr-2">☰</span>
+                                    {colDef?.label || colId}
+                                  </span>
+                                  <button 
+                                    onClick={() => removeColumnFromPreset(preset.id, colId)}
+                                    className="text-red-400 hover:text-red-600 px-1"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            {preset.columns.length === 0 && (
+                              <div className="text-center text-xs text-red-300 py-4">항목을 추가해주세요</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
 
+          {/* [탭 3] 할인율 정책 */}
+          {activeTab === 'discount' && (
+            <div className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
+                <h4 className="font-bold text-blue-800 mb-1">💡 인터랙티브 할인율 정책</h4>
+                <p className="text-sm text-blue-700">각 난이도별(A~F) 수량에 따른 할인율을 그래프의 점을 <strong>드래그</strong>하여 설정하세요.</p>
+              </div>
+              <DiscountPolicyChart policyData={form.discount_policy} onChange={handlePolicyChange} />
+            </div>
+          )}
+
           <div className="pt-8 border-t mt-8 flex justify-end pb-8">
-            <button 
-              onClick={handleSave} 
-              disabled={saving} 
-              className={`px-8 py-3 rounded font-bold shadow-md transition-colors ${
-                saving 
-                  ? 'bg-slate-400 text-slate-200 cursor-not-allowed' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
+            <button onClick={handleSave} disabled={saving} className={`px-8 py-3 rounded font-bold shadow-md transition-colors ${saving ? 'bg-slate-400 text-slate-200 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
               {saving ? '저장 중...' : '설정 저장하기'}
             </button>
           </div>

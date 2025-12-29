@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import log from 'electron-log'; // [추가] 로깅 라이브러리
+import log from 'electron-log';
 import path from 'path';
 import fs from 'fs';
 
@@ -17,8 +17,8 @@ let mainWindow: BrowserWindow | null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1280,
+    height: 900,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -67,8 +67,6 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   log.error('Error in auto-updater:', err);
-  // 에러 내용을 UI로도 보내서 확인 가능하게 함 (선택 사항)
-  // mainWindow?.webContents.send('update-error', err.message);
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
@@ -132,6 +130,24 @@ ipcMain.handle('file:write', async (_event, { fileData, fileName, rootPath, rela
   }
 });
 
+// [추가] 이미지 파일을 Base64로 읽어오기 (화면 표시용)
+ipcMain.handle('file:readBase64', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const fileData = fs.readFileSync(filePath);
+    // 확장자에 따른 MIME 타입 추론 (간단하게)
+    const ext = path.extname(filePath).toLowerCase();
+    let mimeType = 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    
+    // Base64 문자열 반환
+    return `data:${mimeType};base64,${fileData.toString('base64')}`;
+  } catch (error) {
+    console.error('File read error:', error);
+    return null;
+  }
+});
+
 ipcMain.handle('file:exists', async (_event, { rootPath, relativePath }) => {
   try {
     const fullPath = path.join(rootPath, relativePath);
@@ -173,6 +189,18 @@ ipcMain.handle('dialog:openDirectory', async (_event, defaultPath) => {
     properties: ['openDirectory'],
     title: '파일 저장소 루트 폴더 선택',
     defaultPath: defaultPath || undefined
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+// 이미지 파일 선택 핸들러
+ipcMain.handle('dialog:openImage', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
+    title: '이미지 선택 (로고/직인)',
   });
   if (result.canceled) return null;
   return result.filePaths[0];

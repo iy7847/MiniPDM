@@ -24,9 +24,9 @@ interface EstimateItemModalProps {
   onOpenFile: (relativePath: string) => Promise<void>;
 }
 
-// -------------------- 유틸리티 함수 시작 --------------------
+// -------------------- 유틸리티 함수 --------------------
 
-// 1. 텍스트 유사도 계산 (Levenshtein Distance)
+// 텍스트 유사도 계산 (Levenshtein Distance)
 const getSimilarity = (s1: string, s2: string): number => {
   const longer = s1.length > s2.length ? s1 : s2;
   const shorter = s1.length > s2.length ? s2 : s1;
@@ -59,7 +59,7 @@ const levenshteinDistance = (s1: string, s2: string) => {
   return costs[s2.length];
 };
 
-// 2. 할인율 계산 (선형 보간)
+// 할인율 계산 (선형 보간)
 const calculateDiscountRate = (policy: any, difficulty: string, qty: number) => {
   if (!policy || !policy[difficulty]) return 100;
   const rates = policy[difficulty]; 
@@ -94,9 +94,13 @@ export function EstimateItemModal({
   const [applicationRate, setApplicationRate] = useState(100);
   const currencySymbol = CURRENCY_SYMBOL[currency] || currency;
 
-  // [복구] 유사 견적 상태
+  // [상태] 유사 견적
   const [similarItems, setSimilarItems] = useState<EstimateItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // [상태] 소재 추천
+  const [recommendedMaterials, setRecommendedMaterials] = useState<Material[]>([]);
+  const [isRecommending, setIsRecommending] = useState(false);
 
   const activePolicy = discountPolicy || DEFAULT_DISCOUNT_POLICY;
 
@@ -115,7 +119,8 @@ export function EstimateItemModal({
         const rate = calculateDiscountRate(activePolicy, INITIAL_ITEM_FORM.difficulty, INITIAL_ITEM_FORM.qty);
         setApplicationRate(rate);
       }
-      setSimilarItems([]); // 초기화
+      setSimilarItems([]); 
+      setRecommendedMaterials([]); // 초기화
     }
   }, [isOpen, editingItem, discountPolicy, defaultHourlyRate]);
 
@@ -126,7 +131,35 @@ export function EstimateItemModal({
     }
   }, [activePolicy, itemForm.qty, itemForm.difficulty]);
 
-  // [복구] 유사 견적 자동 검색 로직
+  // [기능] 소재 추천 로직 (RPC 호출)
+  const fetchMaterialRecommendations = async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) return;
+    
+    setIsRecommending(true);
+    try {
+      // Supabase RPC 호출
+      const { data, error } = await supabase.rpc('get_material_recommendations', { 
+        search_term: searchTerm 
+      });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        // ID 목록으로 실제 소재 정보 매핑
+        const recIds = data.map((r: any) => r.material_id);
+        const recMats = materials.filter(m => recIds.includes(m.id));
+        setRecommendedMaterials(recMats);
+      } else {
+        setRecommendedMaterials([]);
+      }
+    } catch (err) {
+      console.error('Material recommendation failed:', err);
+    } finally {
+      setIsRecommending(false);
+    }
+  };
+
+  // [기능] 유사 견적 자동 검색
   useEffect(() => {
     const searchTimer = setTimeout(async () => {
       let hasDimensions = false;
@@ -147,7 +180,7 @@ export function EstimateItemModal({
       try {
         let matchedItems: any[] = [];
 
-        // 1. 치수 기반 검색 (형상 일치 & ±5% 오차 범위)
+        // 1. 치수 기반
         if (hasDimensions) {
           const wMin = itemForm.spec_w * 0.95;
           const wMax = itemForm.spec_w * 1.05;
@@ -157,7 +190,7 @@ export function EstimateItemModal({
           let query = supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
-            .or(`shape.eq.${itemForm.shape},shape.is.null`) // 기존 데이터 호환
+            .or(`shape.eq.${itemForm.shape},shape.is.null`)
             .gte('spec_w', wMin).lte('spec_w', wMax)
             .gte('spec_d', dMin).lte('spec_d', dMax);
 
@@ -167,20 +200,20 @@ export function EstimateItemModal({
             query = query.gte('spec_h', hMin).lte('spec_h', hMax);
           }
 
-          const { data, error } = await query.limit(10);
-          if (!error && data) matchedItems = [...matchedItems, ...data];
+          const { data } = await query.limit(10);
+          if (data) matchedItems = [...matchedItems, ...data];
         }
 
-        // 2. 도번 기반 검색 (유사도 80% 이상)
+        // 2. 도번 기반
         if (hasPartNo && itemForm.part_no) {
           const prefix = itemForm.part_no.substring(0, 3);
-          const { data, error } = await supabase
+          const { data } = await supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
             .ilike('part_no', `${prefix}%`)
             .limit(20);
 
-          if (!error && data) {
+          if (data) {
             const similarPartItems = data.filter(item => {
               if (!item.part_no) return false;
               const sim = getSimilarity(item.part_no, itemForm.part_no!);
@@ -190,15 +223,10 @@ export function EstimateItemModal({
           }
         }
 
-        // 중복 제거 및 자기 자신 제외
-        const uniqueItemsMap = new Map();
-        matchedItems.forEach(item => {
-            if (item.id !== editingItem?.id) {
-                uniqueItemsMap.set(item.id, item);
-            }
-        });
-        
-        setSimilarItems(Array.from(uniqueItemsMap.values()));
+        const uniqueItems = Array.from(new Map(matchedItems.map(item => [item.id, item])).values()) as EstimateItem[];
+        const filteredItems = uniqueItems.filter(item => item.id !== editingItem?.id);
+
+        setSimilarItems(filteredItems);
       } catch (error) {
         console.error("Similarity search failed:", error);
       } finally {
@@ -269,6 +297,8 @@ export function EstimateItemModal({
       estimate_id: estimateId,
       ...cleanItemForm,
       material_id: cleanItemForm.material_id || null,
+      // [중요] 도면 소재명 저장
+      original_material_name: cleanItemForm.original_material_name,
       material_cost: calcResult.matCost,
       processing_cost: calcResult.procCost,
       unit_price: finalUnitPrice,
@@ -356,6 +386,43 @@ export function EstimateItemModal({
               <div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">품명</label><input className="w-full border p-2 rounded text-sm" value={itemForm.part_name} onChange={e => setItemForm({...itemForm, part_name: e.target.value})} placeholder="품명" /></div>
               <div className="flex-1"><label className="block text-xs font-bold text-slate-500 mb-1">도번</label><input className="w-full border p-2 rounded text-sm" value={itemForm.part_no} onChange={e => setItemForm({...itemForm, part_no: e.target.value})} placeholder="도번" /></div>
             </div>
+
+            {/* [추가] 도면 소재명 입력 및 추천 */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">도면 소재명 (해외/구형)</label>
+              <div className="flex gap-2">
+                <input 
+                  className="w-full border p-2 rounded text-sm bg-yellow-50 focus:bg-white transition-colors" 
+                  value={itemForm.original_material_name || ''} 
+                  onChange={e => setItemForm({...itemForm, original_material_name: e.target.value})} 
+                  onBlur={() => fetchMaterialRecommendations(itemForm.original_material_name || '')}
+                  onKeyDown={(e) => { if(e.key === 'Enter') fetchMaterialRecommendations(itemForm.original_material_name || '') }}
+                  placeholder="예: A6061-T6, SS41" 
+                />
+                <button 
+                  onClick={() => fetchMaterialRecommendations(itemForm.original_material_name || '')}
+                  disabled={isRecommending}
+                  className="px-3 py-2 bg-slate-100 border rounded text-xs font-bold text-slate-600 hover:bg-slate-200 whitespace-nowrap"
+                >
+                  {isRecommending ? '...' : '추천'}
+                </button>
+              </div>
+              {/* 추천 리스트 */}
+              {recommendedMaterials.length > 0 && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded text-xs">
+                  <span className="font-bold text-blue-700 mr-2">💡 추천 소재:</span>
+                  {recommendedMaterials.map(mat => (
+                    <button
+                      key={mat.id}
+                      onClick={() => setItemForm(prev => ({ ...prev, material_id: mat.id }))}
+                      className="inline-block mr-2 px-2 py-1 bg-white border border-blue-200 rounded hover:bg-blue-100 text-slate-700"
+                    >
+                      {mat.code} ({mat.name})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             
             <div className="flex gap-2">
               {itemForm.shape === 'rect' ? (
@@ -377,9 +444,9 @@ export function EstimateItemModal({
           <div className="space-y-3 p-3 bg-blue-50 rounded border border-blue-200">
             <h4 className="text-xs font-bold text-blue-600 uppercase mb-2 border-b border-blue-200 pb-1">2. 소재비 계산</h4>
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">원자재 선택</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1">실제 소재 (원자재)</label>
               <select 
-                className="w-full border p-2 rounded text-sm" 
+                className="w-full border p-2 rounded text-sm font-bold text-slate-700" 
                 value={itemForm.material_id || ''} 
                 onChange={e => setItemForm({...itemForm, material_id: e.target.value})}
               >
@@ -410,7 +477,7 @@ export function EstimateItemModal({
             </div>
           </div>
           
-          {/* [복구] 유사 견적 이력 섹션 (검색 결과가 있을 때만 표시) */}
+          {/* 유사 견적 이력 섹션 */}
           {similarItems.length > 0 && (
             <div className="bg-yellow-50 p-3 rounded border border-yellow-200 animate-fade-in-down">
               <div className="flex justify-between items-center mb-2">
@@ -428,7 +495,6 @@ export function EstimateItemModal({
                       <span>{item.spec_w}x{item.spec_d}x{item.spec_h} (mm)</span>
                       <span>Qty: {item.qty}</span>
                     </div>
-                    {/* [복구] 유사 견적 파일 리스트 */}
                     {item.files && item.files.length > 0 && (
                       <div className="mt-1 pt-1 border-t border-yellow-100 flex flex-wrap gap-1">
                         {item.files.map(f => (

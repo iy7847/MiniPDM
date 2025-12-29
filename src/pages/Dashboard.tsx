@@ -4,6 +4,7 @@ import { Materials } from './Materials';
 import { Clients } from './Clients';
 import { Estimates } from './Estimates';
 import { Settings } from './Settings';
+import { Orders } from './Orders';
 // [추가] 분리된 사이드바 컴포넌트 불러오기
 import { Sidebar } from '../components/layout/Sidebar';
 
@@ -15,7 +16,7 @@ interface DashboardProps {
 export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
   // 사이드바 확장/축소 상태 관리
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -27,9 +28,11 @@ export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
       case 'clients':
         return <Clients />;
       case 'estimates':
-        return <Estimates />;
+        return <Estimates onNavigate={onNavigate} />;
       case 'settings':
         return <Settings />;
+      case 'orders':
+        return <Orders />;
       case 'dashboard':
       default:
         return (
@@ -60,7 +63,7 @@ export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
   return (
     <div className="flex h-screen bg-slate-50">
       {/* [수정] 사이드바 컴포넌트 사용 */}
-      <Sidebar 
+      <Sidebar
         currentPage={currentPage}
         onNavigate={onNavigate}
         onLogout={handleLogout}
