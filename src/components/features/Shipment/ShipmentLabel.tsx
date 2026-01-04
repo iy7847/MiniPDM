@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import Barcode from 'react-barcode';
-import { Shipment, ShipmentWithItems } from '../../../types/shipment';
+import { ShipmentWithItems } from '../../../types/shipment';
 import { Button } from '../../common/ui/Button';
 
 interface ShipmentLabelProps {

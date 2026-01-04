@@ -37,7 +37,7 @@ export function PdfSplitterModal({ isOpen, onClose, items, onAssign, initialFile
 
     // UI State
     const [scale, setScale] = useState(1.0);
-    const [isMaskMode, setIsMaskMode] = useState(true); // Default to true
+    const [isMaskMode] = useState(true); // Default to true
     const [isProcessing, setIsProcessing] = useState(false);
 
     // Data State
@@ -314,7 +314,7 @@ export function PdfSplitterModal({ isOpen, onClose, items, onAssign, initialFile
 
             // Apply masks to all pages
             const pages = srcDoc.getPages();
-            const { height } = pages[0].getSize(); // Assume uniform size for simplicity or get per page
+            const { height: pdfHeight } = pages[0].getSize(); // Assume uniform size for simplicity or get per page
 
             // We need to embed page indices if we support moving? No, overwrite keeps order ideally.
             // But we must apply masks.

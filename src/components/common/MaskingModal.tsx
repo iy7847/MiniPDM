@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { MobileModal } from './MobileModal';
-import { useProfile } from '../../hooks/useProfile';
+
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure PDF.js worker
@@ -42,7 +42,7 @@ export function MaskingModal({ isOpen, onClose, fileUrl, fileName, onSave }: Mas
                 canvasContext: ctx,
                 viewport: viewport,
             };
-            await page.render(renderContext).promise;
+            await page.render(renderContext as any).promise;
 
             const dataUrl = canvas.toDataURL('image/png');
             setImageSrc(dataUrl);

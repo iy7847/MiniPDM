@@ -94,7 +94,7 @@ export function FilenameParserModal({ isOpen, onClose, files, onConfirm }: Filen
     });
 
     // 2. Create items from groups
-    const parsedItems = Object.entries(groups).map(([baseName, groupFiles], idx) => {
+    const parsedItems = Object.entries(groups).map(([baseName, groupFiles], _idx) => {
       // Use the first file in the group (or just the baseName) for token parsing
       // We'll use the current tokens state if it's the very first group (idx 0),
       // otherwise re-parse the baseName.

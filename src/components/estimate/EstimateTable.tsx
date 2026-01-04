@@ -13,14 +13,14 @@ interface EstimateTableProps {
   onDeleteItem: (id: string) => void;
   onUpdateItem: (itemId: string, updates: Partial<EstimateItem>) => void;
   canViewMargins?: boolean;
-  onDeleteSelected?: () => void;
+
 }
 
 export function EstimateTable({
   items, materials, currency, exchangeRate,
   selectedItemIds, onToggleSelectAll, onToggleSelectItem, onEditItem, onDeleteItem, onUpdateItem,
   canViewMargins = true,
-  onDeleteSelected
+
 }: EstimateTableProps) {
 
   const currencySymbol = CURRENCY_SYMBOL[currency] || currency;

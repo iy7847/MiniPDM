@@ -16,7 +16,7 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { Bar, Line } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 
 ChartJS.register(
     CategoryScale,
@@ -291,8 +291,8 @@ export function ExpenseAnalysis() {
                                             key={mode.id}
                                             onClick={() => setFilters({ ...filters, groupBy: mode.id as any })}
                                             className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${filters.groupBy === mode.id
-                                                    ? 'bg-white text-blue-600 shadow-sm'
-                                                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                                ? 'bg-white text-blue-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
                                                 }`}
                                         >
                                             {mode.label}

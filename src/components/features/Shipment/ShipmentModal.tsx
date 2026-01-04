@@ -225,7 +225,7 @@ export function ShipmentModal({ isOpen, onClose, orderId, items, onSuccess }: Sh
                                     {items.map(item => {
                                         const shipped = shippedQuantities[item.id] || 0;
                                         const remaining = item.qty - shipped;
-                                        const currentInput = quantities[item.id] || 0;
+
 
                                         return (
                                             <tr key={item.id} className="hover:bg-gray-50">
