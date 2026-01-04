@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import path from 'path';
@@ -24,6 +24,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
+    show: false, // [추가] 초기화 시 숨김 처리 (focus 문제 해결 위해 ready-to-show에서 명시적 표시)
   });
 
   const isDev = process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'electron:dev';
@@ -35,8 +36,11 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
-  // 앱이 준비되면 업데이트 체크 시작
+  // 앱이 준비되면 업데이트 체크 시작 및 화면 표시
   mainWindow.once('ready-to-show', () => {
+    mainWindow?.show(); // [추가] 화면 표시
+    mainWindow?.focus(); // [추가] 포커스 강제 설정
+
     if (!isDev) {
       log.info('Checking for updates...');
       autoUpdater.checkForUpdatesAndNotify();
@@ -139,7 +143,8 @@ ipcMain.handle('file:readBase64', async (_event, filePath) => {
     const ext = path.extname(filePath).toLowerCase();
     let mimeType = 'image/png';
     if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
-    
+    else if (ext === '.pdf') mimeType = 'application/pdf';
+
     // Base64 문자열 반환
     return `data:${mimeType};base64,${fileData.toString('base64')}`;
   } catch (error) {
@@ -207,6 +212,7 @@ ipcMain.handle('dialog:openImage', async () => {
 });
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

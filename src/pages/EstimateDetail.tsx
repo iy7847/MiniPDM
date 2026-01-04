@@ -1,15 +1,31 @@
+// import { PageLayout } from '../components/common/PageLayout'; // Deprecated
+import { PageHeader } from '../components/common/ui/PageHeader';
+import { Card } from '../components/common/ui/Card';
+import { Section } from '../components/common/ui/Section';
+import { Button } from '../components/common/ui/Button';
 import { useEstimateLogic } from '../hooks/useEstimateLogic';
+import { useProfile } from '../hooks/useProfile';
+import { supabase } from '../lib/supabaseClient';
 import { EstimateHeader } from '../components/estimate/EstimateHeader';
 import { EstimateTable } from '../components/estimate/EstimateTable';
 import { EstimateItemModal } from '../components/estimate/EstimateItemModal';
+import { ImportItemsModal } from '../components/estimate/ImportItemsModal'; // [New]
 import { QuotationTemplate } from '../components/estimate/QuotationTemplate';
 import { FileDropZone } from '../components/common/FileDropZone';
 import { FilenameParserModal } from '../components/features/FilenameParserModal';
 import { SmartPdfImporter } from '../components/features/SmartPdfImporter';
 import { MobileModal } from '../components/common/MobileModal';
-import { FormattedInput } from '../components/common/FormattedInput'; // [추가]
 import { useReactToPrint } from 'react-to-print';
 import { useRef, useState, useEffect, useMemo } from 'react';
+
+export interface AttachedFile {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string;
+  file_size?: number;
+  original_name?: string;
+}
 
 interface EstimateDetailProps {
   estimateId: string | null;
@@ -18,8 +34,11 @@ interface EstimateDetailProps {
 }
 
 export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetailProps) {
+  const { profile } = useProfile();
+  const userRole = profile?.role;
+
   const {
-    loading, clients, materials, companyRootPath,
+    loading, clients, materials, companyRootPath, postProcessings,
     formData, setFormData,
     items, currentEstimateId,
     isItemModalOpen, setIsItemModalOpen,
@@ -30,7 +49,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
     selectedItemIds,
     bulkWorkDays, setBulkWorkDays,
     fileInputRef,
-    quotationTerms, setQuotationTerms,
+    quotationTerms,
     companyInfo,
     excelPresets, handleExportExcel,
     // Actions
@@ -40,15 +59,18 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
     handleParsedItemsConfirm, handleOcrConfirm,
     updateEstimateTotalAmount, fetchEstimateItems,
     saveFilesToStorage, handleDeleteExistingFile, handleOpenFile,
-    handleSaveTerms,
-    toggleSelectAll, toggleSelectItem,
+    // handleSaveTerms, // Removed
+    toggleSelectAll, toggleSelectItem, handleUpdateItem,
     totalAmount, convertedTotal, currencySymbol,
     discountPolicy, defaultHourlyRate,
-    createOrderFromEstimate
+    createOrderFromEstimate, generateProjectName
   } = useEstimateLogic(estimateId);
 
-  const [isTermModalOpen, setIsTermModalOpen] = useState(false);
+  // const [isTermModalOpen, setIsTermModalOpen] = useState(false); // Removed per user request
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
+  // [New] Import Modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   const [previewTemplateType, setPreviewTemplateType] = useState('A');
   const [exportAsForeign, setExportAsForeign] = useState(false);
 
@@ -65,6 +87,36 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
       setPreviewTemplateType(quotationTerms.template_type || 'A');
     }
   }, [isPreviewModalOpen, quotationTerms]);
+
+
+
+  const handleDelete = async () => {
+    if (!currentEstimateId) return;
+    if (formData.status === 'ORDERED') {
+      alert('이미 수주된 견적서는 삭제할 수 없습니다.\n먼저 수주 관리에서 해당 건을 삭제해주세요.');
+      return;
+    }
+    if (!confirm('정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
+
+    try {
+      // 1. Check orders
+      const { data: orders } = await supabase.from('orders').select('id').eq('estimate_id', currentEstimateId);
+      if (orders && orders.length > 0) {
+        alert('연결된 수주 내역이 있어 삭제할 수 없습니다.');
+        return;
+      }
+
+      // 2. Delete
+      await supabase.from('estimate_items').delete().eq('estimate_id', currentEstimateId);
+      const { error } = await supabase.from('estimates').delete().eq('id', currentEstimateId);
+      if (error) throw error;
+
+      alert('삭제되었습니다.');
+      onBack();
+    } catch (err: any) {
+      alert('삭제 실패: ' + err.message);
+    }
+  };
 
   const handleExcelClick = () => {
     if (excelPresets.length === 0) {
@@ -96,159 +148,230 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
   if (loading) return <div className="h-full flex items-center justify-center text-slate-500">데이터 로딩 중...</div>;
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-lg shadow border border-slate-200 overflow-hidden">
-      {/* 1. 상단 툴바 */}
-      <div className="flex justify-between items-center p-4 border-b bg-slate-50 shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="text-slate-500 hover:text-slate-700 font-bold">← 뒤로</button>
-          <h2 className="text-lg font-bold text-slate-800">
-            {estimateId ? '견적서 수정' : '새 견적서 작성'}
-          </h2>
-        </div>
-        <div className="flex items-center gap-3">
-          {currentEstimateId && (
-            <>
-              {formData.currency !== 'KRW' && (
-                <label className="flex items-center gap-2 mr-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded cursor-pointer hover:bg-yellow-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={exportAsForeign}
-                    onChange={e => setExportAsForeign(e.target.checked)}
-                    className="w-4 h-4 text-yellow-600 accent-yellow-600 cursor-pointer"
-                  />
-                  <div className="flex flex-col leading-none">
-                    <span className="text-xs font-bold text-yellow-800">외화({formData.currency}) 적용</span>
-                    <span className="text-[9px] text-yellow-600">환율: {formData.exchange_rate}</span>
-                  </div>
-                </label>
-              )}
-
-              <button
-                onClick={() => setIsTermModalOpen(true)}
-                className="px-3 py-2 bg-gray-100 border text-slate-700 text-sm font-bold rounded hover:bg-gray-200 whitespace-nowrap"
-              >
-                ⚙️ 조건
-              </button>
-              <button
-                onClick={handleExcelClick}
-                className="px-3 py-2 bg-green-600 text-white text-sm font-bold rounded hover:bg-green-700 shadow-sm whitespace-nowrap"
-              >
-                💾 엑셀
-              </button>
-              <button
-                onClick={() => setIsPreviewModalOpen(true)}
-                className="px-3 py-2 bg-indigo-600 text-white text-sm font-bold rounded hover:bg-indigo-700 shadow-sm whitespace-nowrap"
-              >
-                🖨️ 출력
-              </button>
-              <div className="flex items-center gap-2 ml-2 mr-4 bg-white px-3 py-1 rounded border">
-                <span className={`text-xs font-bold ${formData.status === 'SENT' ? 'text-green-600' : formData.status === 'ORDERED' ? 'text-purple-600' : 'text-slate-500'}`}>
-                  {formData.status === 'SENT' ? '✅ 제출 완료' : formData.status === 'ORDERED' ? '🚀 수주 확정' : '📝 작성 중'}
-                </span>
-                {formData.status !== 'ORDERED' && (
-                  <button
-                    onClick={() => handleStatusChange(formData.status === 'SENT' ? 'DRAFT' : 'SENT')}
-                    className={`text-xs px-2 py-0.5 rounded border ${formData.status === 'SENT' ? 'bg-slate-100' : 'bg-green-100 text-green-700 border-green-300'}`}
+    <>
+      <div className="h-[calc(100vh-64px)] md:h-full flex flex-col bg-slate-50 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+          <PageHeader
+            title={estimateId ? (formData.project_name || '견적서 수정') : '새 견적서 작성'}
+            onBack={onBack}
+            actions={
+              <div className="flex flex-wrap items-center gap-4 justify-end">
+                {/* Group 1: Primary Actions */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleSaveHeader}
+                    variant="primary"
+                    className={currentEstimateId ? 'bg-blue-600' : 'bg-blue-600'}
                   >
-                    {formData.status === 'SENT' ? '취소' : '제출처리'}
-                  </button>
+                    {currentEstimateId ? '저장됨' : '저장'}
+                  </Button>
+                </div>
+
+                {/* Group 2: Options (Only if created) */}
+                {currentEstimateId && (
+                  <>
+                    <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg cursor-pointer hover:bg-yellow-100 transition-colors shrink-0 h-[38px]">
+                        <input
+                          type="checkbox"
+                          checked={exportAsForeign}
+                          onChange={e => setExportAsForeign(e.target.checked)}
+                          className="w-4 h-4 text-yellow-600 accent-yellow-600 cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-yellow-800">외화({formData.currency})</span>
+                      </label>
+                    </div>
+
+                    <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
+
+                    {/* Group 3: Outputs */}
+                    <div className="flex items-center gap-2">
+                      <Button variant="success" size="sm" onClick={handleExcelClick} className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 h-[38px]">
+                        💾 엑셀
+                      </Button>
+
+                      <Button variant="primary" size="sm" onClick={() => setIsPreviewModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 h-[38px]">
+                        🖨️ 출력
+                      </Button>
+                    </div>
+
+                    {/* Group 4: Workflow (Rightmost) */}
+                    {(formData.status === 'SENT' || userRole === 'admin') && (
+                      <>
+                        <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
+                        <div className="flex items-center gap-2">
+                          {formData.status === 'SENT' && (
+                            <Button variant="primary" size="sm" className="bg-purple-600 hover:bg-purple-700 h-[38px] shadow-sm animate-pulse"
+                              style={{ animationDuration: '2s' }}
+                              onClick={async () => {
+                                const orderId = await createOrderFromEstimate();
+                                if (orderId && onNavigate) {
+                                  if (confirm('수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?')) {
+                                    onNavigate('orders');
+                                  }
+                                }
+                              }}
+                            >
+                              🚀 수주 등록
+                            </Button>
+                          )}
+
+                          {(userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_delete_estimate) && (
+                            <Button variant="danger" size="sm" onClick={handleDelete} className="h-[38px] opacity-70 hover:opacity-100">
+                              🗑️
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
-              {formData.status === 'SENT' && (
-                <button
-                  onClick={async () => {
-                    // @ts-ignore
-                    const orderId = await createOrderFromEstimate();
-                    if (orderId && onNavigate) {
-                      if (confirm('수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?')) {
-                        onNavigate('orders');
-                      }
-                    }
-                  }}
-                  className="ml-2 px-3 py-2 bg-indigo-500 text-white text-sm font-bold rounded hover:bg-indigo-600 shadow-sm whitespace-nowrap"
-                >
-                  🚀 수주 등록
-                </button>
-              )}
-            </>
-          )}
-          <button onClick={handleSaveHeader} className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 whitespace-nowrap">
-            {currentEstimateId ? '저장됨' : '저장'}
-          </button>
-        </div>
-      </div>
+            }
+          />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6 pb-24">
-        <EstimateHeader
-          clients={clients}
-          formData={formData}
-          setFormData={setFormData}
-          onClientChange={handleClientChange}
-        />
+          <Section>
+            <div className="flex flex-col xl:flex-row gap-4">
+              <div className="flex-1">
+                <Card className="h-full">
+                  <div className="flex items-center gap-4 mb-4">
+                    <h3 className="font-bold text-slate-700">프로젝트 정보</h3>
+                    {currentEstimateId && (
+                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm shrink-0">
+                        <span className={`text-sm font-bold ${formData.status === 'SENT' ? 'text-green-600' : formData.status === 'ORDERED' ? 'text-purple-600' : 'text-slate-500'}`}>
+                          {formData.status === 'SENT' ? '✓ 제출' : formData.status === 'ORDERED' ? '✓ 수주' : '✎ 작성'}
+                        </span>
+                        {formData.status !== 'ORDERED' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleStatusChange(formData.status === 'SENT' ? 'DRAFT' : 'SENT'); }}
+                            className={`text-sm px-3 py-1 rounded border font-bold transition-colors ${formData.status === 'SENT'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                              : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'
+                              }`}
+                          >
+                            {formData.status === 'SENT' ? '취소' : '제출'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <EstimateHeader
+                    clients={clients}
+                    formData={formData}
+                    setFormData={setFormData}
+                    onClientChange={handleClientChange}
+                    onGenerateProjectName={generateProjectName}
+                  />
+                </Card>
+              </div>
 
-        {currentEstimateId && (
-          <div className="animate-fade-in-down" onClick={openFileDialog}>
-            <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileInputChange} />
-            <FileDropZone onFilesDropped={handleFilesDropped} className="bg-blue-50 border-blue-200 hover:border-blue-400 hover:bg-blue-100 transition-colors" />
-            <p className="text-[11px] text-slate-400 text-center mt-1">* 파일 저장 위치: {companyRootPath || '(경로 미설정)'} \{new Date().getFullYear()}\{formData.project_name || '...'}</p>
-          </div>
-        )}
-
-        <div>
-          <div className="mb-4 flex flex-wrap justify-between items-end gap-2">
-            <h3 className="text-lg font-bold text-slate-700">📋 견적 품목 (Items)</h3>
-            <div className="flex gap-2 items-center">
-              {selectedItemIds.size > 0 && (
-                <div className="flex items-center gap-1 bg-indigo-50 p-1 rounded border border-indigo-100">
-                  <span className="text-xs font-bold text-indigo-700 ml-1">소요일:</span>
-                  <input type="number" className="w-10 border rounded text-xs p-1 text-center" value={bulkWorkDays} onChange={(e) => setBulkWorkDays(Number(e.target.value))} />
-                  <button onClick={handleBulkUpdateWorkDays} className="px-2 py-1 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700">일괄 적용</button>
-                  <div className="w-[1px] h-4 bg-indigo-200 mx-1"></div>
-                  <button onClick={handleDeleteSelected} className="px-2 py-1 text-red-500 hover:text-red-700 text-xs font-bold">삭제 ({selectedItemIds.size})</button>
+              {currentEstimateId && (
+                <div className="xl:w-[380px] shrink-0">
+                  <div className="h-full flex flex-col" onClick={openFileDialog}>
+                    <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileInputChange} />
+                    <FileDropZone onFilesDropped={handleFilesDropped} className="flex-1 bg-blue-50 border-blue-200 hover:border-blue-400 hover:bg-blue-100 transition-colors" />
+                    <p className="text-[10px] text-slate-400 text-center mt-1 truncate">
+                      * 저장: {companyRootPath ? `...\\${new Date().getFullYear()}\\${formData.project_name || '...'}` : '(경로 미설정)'}
+                    </p>
+                  </div>
                 </div>
               )}
-              {/* 스마트 OCR 버튼 */}
-              <button
-                onClick={() => {
-                  if (!currentEstimateId) return alert('먼저 견적서를 저장해주세요.');
-                  setIsOcrModalOpen(true);
-                }}
-                className="px-3 py-1.5 bg-orange-500 text-white text-sm font-bold rounded hover:bg-orange-600 shadow-sm flex items-center gap-1"
-              >
-                <span>⚡</span> 도면 일괄 분석
-              </button>
-
-              <button onClick={() => { if (!currentEstimateId) return alert('먼저 견적서를 저장해주세요.'); openItemModal(null); }} className="px-3 py-1.5 bg-green-600 text-white text-sm font-bold rounded hover:bg-green-700 shadow-sm">+ 품목 직접 추가</button>
             </div>
-          </div>
+          </Section>
 
-          <EstimateTable
-            items={items}
-            materials={materials}
-            currency={formData.currency}
-            exchangeRate={formData.exchange_rate}
-            selectedItemIds={selectedItemIds}
-            onToggleSelectAll={toggleSelectAll}
-            onToggleSelectItem={toggleSelectItem}
-            onEditItem={openItemModal}
-            onDeleteItem={handleDeleteItem}
-          />
+          {/* Items Section */}
+          <Section
+            title={
+              <div className="flex items-end gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-700">견적 품목</h2>
+                  <p className="text-xs text-slate-500 mt-1">품목을 추가하고 관리하세요.</p>
+                </div>
+
+                {/* Batch Actions (Always Visible) */}
+                <div className="flex items-center gap-1 bg-indigo-50 p-1.5 rounded-lg border border-indigo-100 transition-opacity duration-200">
+                  <span className="text-[10px] font-bold text-indigo-700 ml-1 whitespace-nowrap">소요일:</span>
+                  <input
+                    type="number"
+                    className="w-10 border rounded text-xs p-1 text-center bg-white"
+                    value={bulkWorkDays}
+                    onChange={(e) => setBulkWorkDays(Number(e.target.value))}
+                  />
+                  <button
+                    onClick={handleBulkUpdateWorkDays}
+                    disabled={selectedItemIds.size === 0}
+                    className={`px-2 py-1 text-[10px] font-bold rounded-md whitespace-nowrap transition-colors ${selectedItemIds.size > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-indigo-200 text-indigo-50 cursor-not-allowed'
+                      }`}
+                  >
+                    일괄 적용
+                  </button>
+                  <div className="w-[1px] h-4 bg-indigo-200 mx-1 shrink-0"></div>
+                  <button
+                    onClick={handleDeleteSelected}
+                    disabled={selectedItemIds.size === 0}
+                    className={`px-2 py-1 text-[10px] font-bold whitespace-nowrap transition-colors ${selectedItemIds.size > 0 ? 'text-red-500 hover:text-red-700' : 'text-slate-300 cursor-not-allowed'
+                      }`}
+                  >
+                    삭제 ({selectedItemIds.size})
+                  </button>
+                </div>
+              </div>
+            }
+            rightElement={
+              <div className="flex flex-wrap gap-2 items-center">
+                {/* Batch Actions Moved to Title */}
+
+                <div className="flex gap-2">
+                  <Button size="sm" variant="primary" className="bg-orange-500 hover:bg-orange-600" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsOcrModalOpen(true); }}>
+                    ⚡ 도면 분석
+                  </Button>
+                  <Button size="sm" variant="primary" className="bg-cyan-600 hover:bg-cyan-700" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsImportModalOpen(true); }}>
+                    📂 가져오기
+                  </Button>
+                  <Button size="sm" variant="success" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); openItemModal(null); }}>
+                    + 직접 추가
+                  </Button>
+                </div>
+              </div>
+            }
+          >
+            <Card noPadding>
+              <EstimateTable
+                items={items}
+                materials={materials}
+                currency={formData.currency}
+                exchangeRate={formData.exchange_rate}
+                selectedItemIds={selectedItemIds}
+                onToggleSelectAll={toggleSelectAll}
+                onDeleteSelected={handleDeleteSelected} // Assuming this might be missing in view but added earlier? No, wait. 
+                // Let's use the exact lines from view.
+                onToggleSelectItem={toggleSelectItem}
+                onEditItem={openItemModal}
+                onDeleteItem={handleDeleteItem}
+                onUpdateItem={handleUpdateItem}
+                canViewMargins={userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_view_margins}
+              />
+            </Card>
+          </Section>
         </div>
-      </div>
 
-      <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 sticky bottom-0 z-20 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-end items-center gap-8">
-          {formData.currency !== 'KRW' && (
+        {/* Sticky Footer (Flex Item, relative) */}
+        <div className="shrink-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200 z-20 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+          <div className="flex justify-end items-center gap-4 md:gap-8 max-w-7xl mx-auto">
+            {formData.currency !== 'KRW' && (
+              <div className="text-right">
+                <span className="text-[10px] md:text-xs font-bold text-slate-500 block mb-0.5">외화 환산 금액 ({formData.currency})</span>
+                <span className="text-sm md:text-lg font-bold text-slate-600">
+                  {currencySymbol} {convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
             <div className="text-right">
-              <span className="text-xs font-bold text-slate-500 block mb-1">외화 환산 금액 (예상)</span>
-              <span className="text-xl font-bold text-slate-600" style={{ fontSize: '70%' }}>
-                {currencySymbol} {convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </span>
+              <span className="text-[10px] md:text-xs font-bold text-slate-500 block mb-0.5">총 견적 금액 (KRW)</span>
+              <span className="text-xl md:text-3xl font-black text-blue-700 tracking-tight">₩{totalAmount.toLocaleString()}</span>
             </div>
-          )}
-          <div className="text-right">
-            <span className="text-xs font-bold text-slate-500 block mb-1">총 견적 금액 (KRW)</span>
-            <span className="text-3xl font-extrabold text-blue-700">₩ {totalAmount.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -330,11 +453,13 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         onClose={() => setIsItemModalOpen(false)}
         estimateId={currentEstimateId}
         materials={materials}
+        postProcessings={postProcessings}
         currency={formData.currency}
         exchangeRate={formData.exchange_rate}
         editingItem={editingItem}
         discountPolicy={discountPolicy}
         defaultHourlyRate={defaultHourlyRate}
+        existingItems={items} // [Added] Duplicate Check
         onSaveSuccess={async () => { await updateEstimateTotalAmount(currentEstimateId!); await fetchEstimateItems(currentEstimateId!); }}
         onSaveFiles={saveFilesToStorage}
         onDeleteExistingFile={handleDeleteExistingFile}
@@ -354,76 +479,39 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         onConfirm={handleOcrConfirm}
       />
 
-      <MobileModal
-        isOpen={isTermModalOpen}
-        onClose={() => setIsTermModalOpen(false)}
-        title="견적서 발행 조건 설정"
-        footer={
-          <button onClick={() => { handleSaveTerms(quotationTerms); setIsTermModalOpen(false); }} className="w-full py-3 bg-blue-600 text-white font-bold rounded">
-            조건 저장
-          </button>
-        }
-      >
-        <div className="space-y-4">
-          <div className="bg-slate-50 p-3 rounded border">
-            <label className="block text-xs font-bold text-slate-500 mb-2">기본 견적서 양식</label>
-            <div className="flex gap-4">
-              {['A', 'B', 'C'].map(type => (
-                <label key={type} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="template_type"
-                    value={type}
-                    // @ts-ignore
-                    checked={quotationTerms.template_type === type}
-                    onChange={(e) => setQuotationTerms({ ...quotationTerms, template_type: e.target.value })}
-                  />
-                  <span className="text-sm font-bold">Type {type}</span>
-                </label>
-              ))}
-            </div>
-          </div>
+      <ImportItemsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onConfirm={async (newItems) => {
+          // Transform and add items
+          // Transform and add items
+          const parsedItems = newItems.map(item => {
+            // [Parse Spec String] e.g. "10x20x5" or "10-20-5"
+            let w = 0, d = 0, h = 0;
+            if (item.spec) {
+              const nums = item.spec.match(/[\d.]+/g)?.map(Number) || [];
+              if (nums.length >= 1) w = nums[0];
+              if (nums.length >= 2) d = nums[1];
+              if (nums.length >= 3) h = nums[2];
+            }
 
-          {/* [수정] FormattedInput 적용하여 입력 시 포커스 잃는 문제 해결 */}
-          <div>
-            <FormattedInput
-              label="견적 번호 (Ref. No)"
-              value={quotationTerms.quotation_no || ''}
-              onChange={val => setQuotationTerms({ ...quotationTerms, quotation_no: val })}
-              placeholder="자동 생성 또는 직접 입력"
-            />
-          </div>
-          <div>
-            <FormattedInput
-              label="결제 조건 (Payment)"
-              value={quotationTerms.payment_terms}
-              onChange={val => setQuotationTerms({ ...quotationTerms, payment_terms: val })}
-            />
-          </div>
-          <div>
-            <FormattedInput
-              label="인도 조건 (Incoterms)"
-              value={quotationTerms.incoterms}
-              onChange={val => setQuotationTerms({ ...quotationTerms, incoterms: val })}
-            />
-          </div>
-          <div>
-            <FormattedInput
-              label="납기 (Delivery)"
-              value={quotationTerms.delivery_period}
-              onChange={val => setQuotationTerms({ ...quotationTerms, delivery_period: val })}
-            />
-          </div>
-          <div>
-            <FormattedInput
-              label="도착지 (Destination)"
-              value={quotationTerms.destination}
-              onChange={val => setQuotationTerms({ ...quotationTerms, destination: val })}
-            />
-          </div>
-          <div><label className="block text-xs font-bold text-slate-500 mb-1">비고 (Note)</label><textarea className="w-full border p-2 rounded h-20" value={quotationTerms.note} onChange={e => setQuotationTerms({ ...quotationTerms, note: e.target.value })} /></div>
-        </div>
-      </MobileModal>
+            return {
+              part_name: item.part_name || '',
+              part_no: item.drawing_number || '',
+              spec_w: w,
+              spec_d: d,
+              spec_h: h,
+              unit_price: item.unit_price,
+              qty: item.qty,
+              files: []
+              // Note: 'spec' property is intentionally OMITTED to avoid DB error
+            };
+          });
+          await handleParsedItemsConfirm(parsedItems);
+        }}
+      />
+
+      {/* Terms Modal Removed */}
 
       <div className="hidden">
         <QuotationTemplate
@@ -436,7 +524,6 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
           templateType={previewTemplateType}
         />
       </div>
-
-    </div>
+    </>
   );
 }

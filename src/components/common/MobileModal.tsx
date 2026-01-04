@@ -8,15 +8,19 @@ interface MobileModalProps {
   footer?: React.ReactNode;
   // [추가] 너비 조절을 위한 Prop (기본값: max-w-sm)
   // 예: 'max-w-lg', 'max-w-2xl', 'max-w-4xl', 'md:w-3/4'
-  maxWidth?: string; 
+  // [추가] 너비 조절을 위한 Prop (기본값: max-w-sm)
+  // 예: 'max-w-lg', 'max-w-2xl', 'max-w-4xl', 'md:w-3/4'
+  maxWidth?: string;
+  // [추가] 내부 스크롤 제거 여부 (기본: false). true면 자식이 높이/스크롤 제어
+  noScroll?: boolean;
 }
 
-export function MobileModal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-sm' }: MobileModalProps) {
+export function MobileModal({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-sm', noScroll = false }: MobileModalProps) {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div 
+      <div
         className={`bg-white w-full ${maxWidth} rounded-lg shadow-xl overflow-hidden flex flex-col max-h-[90vh] transition-all`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -27,7 +31,7 @@ export function MobileModal({ isOpen, onClose, title, children, footer, maxWidth
           </button>
         </div>
 
-        <div className="p-4 space-y-4 overflow-y-auto">
+        <div className={`p-4 space-y-4 ${noScroll ? 'overflow-hidden flex flex-col flex-1' : 'overflow-y-auto'}`}>
           {children}
         </div>
 

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { PageLayout } from '../components/common/PageLayout';
+import { useProfile } from '../hooks/useProfile';
+import { PageHeader } from '../components/common/ui/PageHeader';
+import { Section } from '../components/common/ui/Section';
+import { Card } from '../components/common/ui/Card';
+import { Button } from '../components/common/ui/Button';
 import { MobileModal } from '../components/common/MobileModal';
 import { FormattedInput } from '../components/common/FormattedInput';
 
@@ -72,17 +76,18 @@ export function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>('member');
+  const { profile } = useProfile();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState(INITIAL_FORM);
 
   useEffect(() => {
     fetchUserData();
-    fetchClients();
-  }, []);
+    if (profile?.company_id) fetchClients();
+  }, [profile]);
 
   const fetchUserData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -93,10 +98,12 @@ export function Clients() {
   };
 
   const fetchClients = async () => {
+    if (!profile?.company_id) return;
     if (clients.length === 0) setLoading(true);
     const { data, error } = await supabase
       .from('clients')
       .select('*')
+      .eq('company_id', profile.company_id)
       .order('name', { ascending: true });
 
     if (error) console.error('Error fetching clients:', error);
@@ -218,7 +225,7 @@ export function Clients() {
   };
 
   const handleDelete = async (id: string) => {
-    if (userRole !== 'admin') return alert('권한이 없습니다.');
+    if (userRole !== 'admin' && userRole !== 'super_admin') return alert('권한이 없습니다.');
     if (!window.confirm('정말 삭제하시겠습니까? 관련 견적 데이터에도 영향을 줄 수 있습니다.')) return;
 
     const { error } = await supabase.from('clients').delete().eq('id', id);
@@ -231,118 +238,189 @@ export function Clients() {
     setFormData({
       ...formData,
       is_foreign: isForeign,
-      country: isForeign ? 'US' : 'KR', 
+      country: isForeign ? 'US' : 'KR',
       biz_num: '',
       currency: isForeign ? 'USD' : 'KRW',
     });
   };
 
   return (
-    <PageLayout
-      title="🏢 거래처 관리"
-      actions={
-        <>
-          <input
-            type="text"
-            placeholder="상호명 또는 사업자번호 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="border rounded px-3 py-2 text-sm flex-1 outline-none w-full"
-          />
-          {userRole === 'admin' && (
-            <button
-              onClick={() => openModal()}
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold shadow-sm whitespace-nowrap hover:bg-blue-700"
-            >
-              + 거래처 등록
-            </button>
-          )}
-        </>
-      }
-    >
-      <div className="hidden md:block bg-white rounded-lg shadow border border-slate-200 overflow-auto flex-1">
-        <table className="min-w-full divide-y divide-slate-200 relative">
-          <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">국가/통화</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">거래처명</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">사업자/Tax ID</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">담당자</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase">연락처</th>
-              <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase">관리</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-slate-200">
-            {loading ? (
-              <tr><td colSpan={6} className="text-center py-10 text-slate-500">데이터 로딩 중...</td></tr>
-            ) : filteredClients.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-slate-400">등록된 거래처가 없습니다.</td></tr>
-            ) : (
-              filteredClients.map((client) => (
-                <tr key={client.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                    <div className="flex gap-1">
-                      {client.is_foreign ? (
-                        <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-xs font-bold">{client.country}</span>
-                      ) : (
-                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs">KR</span>
-                      )}
-                      <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs font-medium">{client.currency || 'KRW'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-800">{client.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-mono">{client.biz_num || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                    {client.manager_name} <span className="text-slate-400 text-xs">{client.manager_email && `(${client.manager_email})`}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-mono">{client.manager_phone || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                    {userRole === 'admin' && (
-                      <div className="space-x-3">
-                        <button onClick={() => openModal(client)} className="text-blue-600 hover:text-blue-800 font-medium">수정</button>
-                        <button onClick={() => handleDelete(client.id)} className="text-red-500 hover:text-red-700 font-medium">삭제</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+    <div className="h-full flex flex-col bg-slate-50 relative">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+        <PageHeader
+          title="🏢 거래처 관리"
+          actions={
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 whitespace-nowrap hidden md:block mr-2">
+                총 <span className="text-blue-600">{filteredClients.length}</span>개 업체
+              </span>
+              {userRole === 'admin' && (
+                <Button
+                  variant="primary"
+                  onClick={() => openModal()}
+                  className="shadow-md"
+                >
+                  + 업체 등록
+                </Button>
+              )}
+            </div>
+          }
+        />
 
-      <div className="md:hidden overflow-y-auto space-y-4 pb-4 flex-1">
-        {loading && <div className="text-center py-10 text-slate-500">데이터 로딩 중...</div>}
-        {!loading && filteredClients.length === 0 && <div className="text-center text-slate-500 py-8">등록된 거래처가 없습니다.</div>}
-        
-        {filteredClients.map((client) => (
-          <div key={client.id} className="bg-white p-4 rounded-lg shadow border border-slate-200 flex flex-col gap-2">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  {client.is_foreign ? (
-                    <span className="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{client.country}</span>
+        <Section>
+          <Card className="p-4">
+            <input
+              type="text"
+              placeholder="상호명 또는 사업자번호 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-400"
+            />
+          </Card>
+        </Section>
+
+        <Section title={`거래처 목록 (${filteredClients.length}개)`}>
+          <Card noPadding className="overflow-hidden">
+            {/* 데스크톱 리스트 */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-bold text-slate-500">국가/통화</th>
+                    <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-bold text-slate-500">거래처명</th>
+                    <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-bold text-slate-500">사업자/Tax ID</th>
+                    <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-bold text-slate-500">담당자</th>
+                    <th className="px-6 py-3 text-left text-xs uppercase tracking-wider font-bold text-slate-500">연락처</th>
+                    <th className="px-6 py-3 text-center text-xs uppercase tracking-wider font-bold text-slate-500">관리</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+
+                  {loading ? (
+                    <tr><td colSpan={6} className="text-center py-20 text-slate-500">데이터 로딩 중...</td></tr>
+                  ) : filteredClients.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-20 text-slate-400">등록된 거래처가 없습니다.</td></tr>
                   ) : (
-                    <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">KR</span>
+                    filteredClients.map((client) => (
+                      <tr key={client.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex gap-1.5">
+                            {client.is_foreign ? (
+                              <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded text-[10px] font-bold border border-red-100">{client.country}</span>
+                            ) : (
+                              <span className="bg-slate-50 text-slate-500 px-2 py-0.5 rounded text-[10px] border border-slate-100">KR</span>
+                            )}
+                            <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100">{client.currency || 'KRW'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-800">{client.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-mono">{client.biz_num || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                          <div className="flex flex-col">
+                            <span className="font-bold">{client.manager_name || '-'}</span>
+                            <span className="text-xs text-slate-400">{client.manager_email}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-mono">{client.manager_phone || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                          <div className="flex justify-center gap-3">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openModal(client)}
+                              className="h-[28px] opacity-70 hover:opacity-100"
+                            >
+                              ✏️
+                            </Button>
+                            {userRole === 'admin' && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDelete(client.id)}
+                                className="h-[28px] opacity-70 hover:opacity-100" // Adjusted height for table
+                              >
+                                🗑️
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
                   )}
-                  <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[10px] font-bold">{client.currency || 'KRW'}</span>
-                  <h4 className="text-lg font-bold text-slate-800">{client.name}</h4>
-                </div>
-                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded font-mono">{client.biz_num || '사업자번호 없음'}</span>
-              </div>
+                </tbody>
+              </table>
             </div>
-            <div className="text-sm text-slate-600 space-y-1 mt-1">
-              <p>👤 {client.manager_name || '담당자 미지정'} {client.manager_email && `(${client.manager_email})`}</p>
-              <p>📞 {client.manager_phone || '연락처 없음'}</p>
+
+
+            {/* 모바일 리스트 */}
+            <div className="md:hidden flex-1 overflow-y-auto space-y-3 pb-4">
+              {loading ? (
+                <div className="text-center py-20 text-slate-400 font-bold">로딩 중...</div>
+              ) : filteredClients.length === 0 ? (
+                <div className="text-center py-20 text-slate-400 font-bold">등록된 업체가 없습니다.</div>
+              ) : (
+                filteredClients.map((client) => (
+                  <div key={client.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 active:bg-slate-50 transition-colors">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-1.5">
+                          {client.is_foreign ? (
+                            <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded text-[10px] font-bold border border-red-100">{client.country}</span>
+                          ) : (
+                            <span className="bg-slate-50 text-slate-500 px-2 py-0.5 rounded text-[10px] border border-slate-100">KR</span>
+                          )}
+                          <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-100">{client.currency || 'KRW'}</span>
+                        </div>
+                        <h4 className="text-lg font-bold text-slate-800">{client.name}</h4>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs bg-slate-50 text-slate-600 px-2 py-1 rounded font-mono border border-slate-100">
+                          {client.biz_num || 'Tax ID 없음'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-sm text-slate-600 space-y-1.5 mt-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <p className="flex items-center gap-2">
+                        <span className="text-slate-400 min-w-[50px]">담당자</span>
+                        <span className="font-bold text-slate-700">{client.manager_name || '미지정'}</span>
+                      </p>
+                      <p className="flex items-center gap-2">
+                        <span className="text-slate-400 min-w-[50px]">연락처</span>
+                        <span className="font-mono text-slate-700">{client.manager_phone || '-'}</span>
+                      </p>
+                      {client.manager_email && (
+                        <p className="flex items-center gap-2">
+                          <span className="text-slate-400 min-w-[50px]">이메일</span>
+                          <span className="text-xs text-blue-600 break-all">{client.manager_email}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-3 pt-3 mt-1">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openModal(client)}
+                        className="h-[32px] w-[32px] opacity-70 hover:opacity-100 flex items-center justify-center p-0"
+                      >
+                        ✏️
+                      </Button>
+                      {userRole === 'admin' && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(client.id)}
+                          className="h-[32px] w-[32px] opacity-70 hover:opacity-100 flex items-center justify-center p-0"
+                        >
+                          🗑️
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-            {userRole === 'admin' && (
-              <div className="border-t pt-2 mt-2 flex justify-end space-x-3">
-                <button onClick={() => openModal(client)} className="text-sm text-blue-600 font-bold px-3 py-1 border border-blue-200 rounded">수정</button>
-                <button onClick={() => handleDelete(client.id)} className="text-sm text-red-600 font-bold px-3 py-1 border border-red-200 rounded">삭제</button>
-              </div>
-            )}
-          </div>
-        ))}
+          </Card>
+        </Section>
       </div>
 
       <MobileModal
@@ -350,115 +428,108 @@ export function Clients() {
         onClose={() => setIsModalOpen(false)}
         title={editId ? '거래처 정보 수정' : '신규 거래처 등록'}
         footer={
-          <>
-            <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-slate-600 font-bold border rounded bg-white hover:bg-slate-50">취소</button>
-            <button onClick={handleSave} className="flex-1 py-3 text-white font-bold border rounded bg-blue-600 hover:bg-blue-700 shadow-sm">저장</button>
-          </>
+          <div className="flex gap-2 w-full">
+            <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-slate-500 font-bold rounded-lg border bg-white">취소</button>
+            <button onClick={handleSave} className="flex-1 py-3 text-white font-bold rounded-lg bg-blue-600 shadow-md">저장하기</button>
+          </div>
         }
       >
-        <div>
-          <FormattedInput 
+        <div className="space-y-4">
+          <FormattedInput
             label="거래처명 (필수)"
-            value={formData.name} 
-            onChange={(val) => setFormData({...formData, name: val})} 
+            value={formData.name}
+            onChange={(val) => setFormData({ ...formData, name: val })}
             placeholder="(주)미래정밀"
           />
-        </div>
-        
-        <div className="bg-slate-50 p-3 rounded border-2 border-blue-100 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="is_foreign"
-                checked={formData.is_foreign}
-                onChange={handleForeignChange}
-                className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-              />
-              <label htmlFor="is_foreign" className="text-sm font-bold text-slate-800 select-none cursor-pointer">해외 기업 (Foreign)</label>
+
+          <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="is_foreign"
+                  checked={formData.is_foreign}
+                  onChange={handleForeignChange}
+                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="is_foreign" className="text-sm font-bold text-slate-800 select-none cursor-pointer">해외 기업 (Foreign)</label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-500">결제 통화</label>
+                <select
+                  value={formData.currency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  className="border p-1.5 rounded-lg text-sm bg-white font-bold text-blue-600 outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  <option value="KRW">KRW (₩)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="CNY">CNY (¥)</option>
+                  <option value="JPY">JPY (¥)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="CAD">CAD ($)</option>
+                  <option value="AUD">AUD ($)</option>
+                  <option value="VND">VND (₫)</option>
+                </select>
+              </div>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-500">결제 통화</label>
-              <select 
-                value={formData.currency}
-                onChange={(e) => setFormData({...formData, currency: e.target.value})}
-                className="border p-1.5 rounded text-sm bg-white font-bold text-blue-600 outline-none focus:ring-2 focus:ring-blue-200"
-              >
-                <option value="KRW">KRW (₩)</option>
-                <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="CNY">CNY (¥)</option>
-                <option value="JPY">JPY (¥)</option>                
-                <option value="GBP">GBP (£)</option>
-                <option value="CAD">CAD ($)</option>
-                <option value="AUD">AUD ($)</option>
-                <option value="VND">VND (₫)</option>
-              </select>
-            </div>
+
+            {formData.is_foreign && (
+              <div className="animate-in fade-in slide-in-from-top-1">
+                <label className="block text-xs font-bold text-slate-500 mb-1">국가 선택</label>
+                <select
+                  className="w-full border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-200 font-bold text-slate-700 bg-white"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                >
+                  {Object.entries(COUNTRY_GROUPS).map(([groupName, countries]) => (
+                    <optgroup key={groupName} label={groupName}>
+                      {countries.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          {formData.is_foreign && (
-            <div className="animate-in fade-in slide-in-from-top-1">
-              <label className="block text-xs font-bold text-slate-500 mb-1">국가 선택</label>
-              <select
-                className="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-blue-200 font-bold text-slate-700 bg-white"
-                value={formData.country}
-                onChange={(e) => setFormData({...formData, country: e.target.value})}
-              >
-                {Object.entries(COUNTRY_GROUPS).map(([groupName, countries]) => (
-                  <optgroup key={groupName} label={groupName}>
-                    {countries.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <FormattedInput 
+          <FormattedInput
             label={formData.is_foreign ? "Tax ID (사업자번호)" : "사업자번호"}
             type={formData.is_foreign ? 'text' : 'biz_num'}
-            value={formData.biz_num} 
-            onChange={(val) => setFormData({...formData, biz_num: val})} 
+            value={formData.biz_num}
+            onChange={(val) => setFormData({ ...formData, biz_num: val })}
             placeholder={formData.is_foreign ? "Free Format" : "000-00-00000"}
           />
-        </div>
-        
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <FormattedInput 
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormattedInput
               label="담당자명"
-              value={formData.manager_name} 
-              onChange={(val) => setFormData({...formData, manager_name: val})} 
+              value={formData.manager_name}
+              onChange={(val) => setFormData({ ...formData, manager_name: val })}
               placeholder="홍길동"
             />
-          </div>
-          <div className="flex-1">
-            <FormattedInput 
+            <FormattedInput
               label="연락처"
               type={formData.is_foreign ? 'text' : 'phone'}
-              value={formData.manager_phone} 
-              onChange={(val) => setFormData({...formData, manager_phone: val})} 
+              value={formData.manager_phone}
+              onChange={(val) => setFormData({ ...formData, manager_phone: val })}
               placeholder={formData.is_foreign ? "Free Format" : "010-0000-0000"}
             />
           </div>
-        </div>
-        <div>
-          <FormattedInput 
+
+          <FormattedInput
             label="이메일"
             type="email"
-            value={formData.manager_email} 
-            onChange={(val) => setFormData({...formData, manager_email: val})} 
+            value={formData.manager_email}
+            onChange={(val) => setFormData({ ...formData, manager_email: val })}
             placeholder="manager@partner.com"
           />
         </div>
       </MobileModal>
-    </PageLayout>
+    </div >
   );
 }
