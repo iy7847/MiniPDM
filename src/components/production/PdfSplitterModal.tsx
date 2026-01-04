@@ -314,7 +314,7 @@ export function PdfSplitterModal({ isOpen, onClose, items, onAssign, initialFile
 
             // Apply masks to all pages
             const pages = srcDoc.getPages();
-            const { height: pdfHeight } = pages[0].getSize(); // Assume uniform size for simplicity or get per page
+
 
             // We need to embed page indices if we support moving? No, overwrite keeps order ideally.
             // But we must apply masks.
