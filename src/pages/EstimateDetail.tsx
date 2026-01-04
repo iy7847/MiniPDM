@@ -345,8 +345,6 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                 exchangeRate={formData.exchange_rate}
                 selectedItemIds={selectedItemIds}
                 onToggleSelectAll={toggleSelectAll}
-                onDeleteSelected={handleDeleteSelected} // Assuming this might be missing in view but added earlier? No, wait. 
-                // Let's use the exact lines from view.
                 onToggleSelectItem={toggleSelectItem}
                 onEditItem={openItemModal}
                 onDeleteItem={handleDeleteItem}
