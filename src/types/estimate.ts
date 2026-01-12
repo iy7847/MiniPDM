@@ -4,6 +4,8 @@ export type Client = { id: string; name: string; currency: string; };
 export type Material = { id: string; name: string; code: string; density: number; unit_price: number; };
 export type PostProcessing = { id: string; name: string; price_per_kg: number; };
 
+export type HeatTreatment = { id: string; name: string; price_per_kg: number; }; // [NEW]
+
 export type AttachedFile = {
   id: string;
   file_name: string;
@@ -13,6 +15,7 @@ export type AttachedFile = {
   original_name?: string;
   version?: number;
   exists_on_disk?: boolean;
+  is_current?: boolean;
 };
 
 export type EstimateItem = {
@@ -33,12 +36,14 @@ export type EstimateItem = {
 
   material_id: string | null;
   post_processing_id?: string | null;
+  heat_treatment_id?: string | null; // [NEW]
 
   process_time: number;
   hourly_rate: number;
   difficulty: string;
-  profit_rate: number; // 기업이윤 (%)
+  profit_rate: number;
   post_process_cost: number;
+  heat_treatment_cost?: number; // [NEW]
 
   material_cost?: number;
   processing_cost?: number;
@@ -48,6 +53,7 @@ export type EstimateItem = {
   supply_price: number;
 
   work_days: number;
+  note?: string; // [NEW]
 
   tempFiles?: File[];
   files?: AttachedFile[];
@@ -70,6 +76,7 @@ export const INITIAL_ITEM_FORM: EstimateItem = {
   process_time: 0, hourly_rate: 50000, difficulty: 'B', profit_rate: 0, post_process_cost: 0,
   qty: 1, unit_price: 0, supply_price: 0,
   work_days: 3,
+  note: '',
   tempFiles: [],
   files: []
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Client, Material, EstimateItem, INITIAL_ITEM_FORM, CURRENCY_SYMBOL, DEFAULT_QUOTATION_TERMS, ExcelExportPreset, PostProcessing, DIFFICULTY_FACTOR } from '../types/estimate';
+import { Client, Material, EstimateItem, INITIAL_ITEM_FORM, CURRENCY_SYMBOL, DEFAULT_QUOTATION_TERMS, ExcelExportPreset, PostProcessing, DIFFICULTY_FACTOR, HeatTreatment } from '../types/estimate';
 import { exportEstimateToExcel } from '../utils/excelExport';
 import { calculateDiscountRate } from '../utils/estimateUtils';
 
@@ -9,6 +9,7 @@ export function useEstimateLogic(estimateId: string | null) {
   const [clients, setClients] = useState<Client[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [postProcessings, setPostProcessings] = useState<PostProcessing[]>([]);
+  const [heatTreatments, setHeatTreatments] = useState<HeatTreatment[]>([]); // [NEW]
   const [companyRootPath, setCompanyRootPath] = useState<string>('');
   const [defaultExchangeRate, setDefaultExchangeRate] = useState(1400.0);
   const [discountPolicy, setDiscountPolicy] = useState<any>(null);
@@ -103,48 +104,49 @@ export function useEstimateLogic(estimateId: string | null) {
             setExcelPresets(presets || []);
 
             // [변경] 회사 ID로 필터링하여 기초 데이터 조회
-            const [clientRes, matRes, ppRes] = await Promise.all([
+            const [clientRes, matRes, ppRes, htRes] = await Promise.all([
               supabase.from('clients').select('id, name, currency').eq('company_id', profile.company_id).order('name'),
               supabase.from('materials').select('id, name, code, density, unit_price').eq('company_id', profile.company_id).order('code'),
-              supabase.from('post_processings').select('*').eq('company_id', profile.company_id).order('name')
+              supabase.from('post_processings').select('*').eq('company_id', profile.company_id).order('name'),
+              supabase.from('heat_treatments').select('*').eq('company_id', profile.company_id).order('name') // [NEW]
             ]);
             setClients(clientRes.data || []);
             setMaterials(matRes.data || []);
             setPostProcessings(ppRes.data || []);
-          }
-        }
+            setHeatTreatments(htRes.data || []); // [NEW]
 
-        if (estimateId) {
-          const { data: est } = await supabase.from('estimates').select('*').eq('id', estimateId).single();
-          if (est) {
-            setFormData({
-              client_id: est.client_id,
-              project_name: est.project_name,
-              currency: est.currency,
-              exchange_rate: est.base_exchange_rate || 1.0,
-              status: est.status,
-            });
+            const { data: est } = estimateId ? await supabase.from('estimates').select('*').eq('id', estimateId).single() : { data: null };
+            if (est) {
+              setFormData({
+                client_id: est.client_id,
+                project_name: est.project_name,
+                currency: est.currency,
+                exchange_rate: est.base_exchange_rate || 1.0,
+                status: est.status,
+              });
 
-            setQuotationTerms({
-              quotation_no: est.quotation_no || '',
-              payment_terms: est.payment_terms || currentCompanyInfo?.default_payment_terms || DEFAULT_QUOTATION_TERMS.payment_terms,
-              incoterms: est.incoterms || currentCompanyInfo?.default_incoterms || DEFAULT_QUOTATION_TERMS.incoterms,
-              delivery_period: est.delivery_period || currentCompanyInfo?.default_delivery_period || DEFAULT_QUOTATION_TERMS.delivery_period,
-              destination: est.destination || currentCompanyInfo?.default_destination || '',
-              validity: est.validity || DEFAULT_QUOTATION_TERMS.validity,
-              note: est.note || currentCompanyInfo?.default_note || DEFAULT_QUOTATION_TERMS.note,
-              template_type: est.template_type || currentCompanyInfo?.quotation_template_type || 'A'
-            });
+              setQuotationTerms({
+                quotation_no: est.quotation_no || '',
+                payment_terms: est.payment_terms || currentCompanyInfo?.default_payment_terms || DEFAULT_QUOTATION_TERMS.payment_terms,
+                incoterms: est.incoterms || currentCompanyInfo?.default_incoterms || DEFAULT_QUOTATION_TERMS.incoterms,
+                delivery_period: est.delivery_period || currentCompanyInfo?.default_delivery_period || DEFAULT_QUOTATION_TERMS.delivery_period,
+                destination: est.destination || currentCompanyInfo?.default_destination || '',
+                validity: est.validity || DEFAULT_QUOTATION_TERMS.validity,
+                note: est.note || currentCompanyInfo?.default_note || DEFAULT_QUOTATION_TERMS.note,
+                template_type: est.template_type || currentCompanyInfo?.quotation_template_type || 'A'
+              });
+            }
+          } else {
+            setQuotationTerms(prev => ({
+              ...prev,
+              template_type: currentCompanyInfo?.quotation_template_type || 'A'
+            }));
           }
-        } else {
-          setQuotationTerms(prev => ({
-            ...prev,
-            template_type: currentCompanyInfo?.quotation_template_type || 'A'
-          }));
+          setLoading(false);
         }
-        setLoading(false);
       }
     };
+
     fetchData();
   }, [estimateId]);
 
@@ -403,21 +405,44 @@ export function useEstimateLogic(estimateId: string | null) {
     // Merge updates
     const newItem = { ...item, ...updates };
 
+    // Helper: Calculate Weight
+    let weight = 0;
+    const mat = materials.find(m => m.id === newItem.material_id);
+    if (mat) {
+      if (newItem.shape === 'rect' && newItem.raw_w && newItem.raw_d && newItem.raw_h) {
+        weight = (newItem.raw_w * newItem.raw_d * newItem.raw_h * mat.density) / 1000000;
+      } else if (newItem.shape === 'round' && newItem.raw_w && newItem.raw_d) {
+        const r = newItem.raw_w / 2;
+        weight = (Math.PI * r * r * newItem.raw_d * mat.density) / 1000000;
+      }
+    }
+
     // Recalculate logic
     // 1. Processing Cost
     const factor = DIFFICULTY_FACTOR[newItem.difficulty] || 1.2;
     // @ts-ignore
     const procCost = (newItem.process_time || 0) * (newItem.hourly_rate || defaultHourlyRate) * factor;
 
-    // 2. Base Total
-    // Use existing costs if not updated, but recalc processing cost if time changed
-    const matCost = newItem.material_cost || 0;
-    const postProcCost = newItem.post_process_cost || 0;
+    // 2. Costs (Recalc if IDs changed)
+    const matCost = newItem.material_cost || 0; // Usually fixed unless material/spec changes (which is hard to do inline without complex logic)
 
-    // Recalculate if process_time was updated
-    const finalProcCost = ('process_time' in updates) ? procCost : (newItem.processing_cost || 0);
+    let postProcCost = newItem.post_process_cost || 0;
+    if ('post_processing_id' in updates) {
+      // Find price per kg
+      const pp = postProcessings.find(p => p.id === newItem.post_processing_id);
+      postProcCost = pp ? (pp.price_per_kg * weight) : 0;
+    }
 
-    const baseTotal = matCost + finalProcCost + postProcCost;
+    let heatTreatCost = newItem.heat_treatment_cost || 0;
+    if ('heat_treatment_id' in updates) {
+      const ht = heatTreatments.find(h => h.id === newItem.heat_treatment_id);
+      heatTreatCost = ht ? (ht.price_per_kg * weight) : 0;
+    }
+
+    // Recalculate if process_time was updated or difficulty changed
+    const finalProcCost = ('process_time' in updates || 'difficulty' in updates) ? procCost : (newItem.processing_cost || 0);
+
+    const baseTotal = matCost + finalProcCost + postProcCost + heatTreatCost;
 
     // 3. Profit
     const profitRate = newItem.profit_rate || 0;
@@ -425,9 +450,14 @@ export function useEstimateLogic(estimateId: string | null) {
     const subTotal = baseTotal + profitAmount;
 
     // 4. Final Unit Price (Apply Discount Rate)
-    const activePolicy = discountPolicy || {}; // Should import DEFAULT if needed, but assuming loaded
+    const activePolicy = discountPolicy || {};
     const appRate = calculateDiscountRate(activePolicy, newItem.difficulty, newItem.qty);
-    const finalUnitPrice = Math.round(subTotal * (appRate / 100) / 10) * 10;
+
+    // [Rounding Logic] Ceil to 1000 (139,160 => 140,000)
+    // Formula: Math.ceil(price / 1000) * 1000
+    const rawUnitPrice = subTotal * (appRate / 100);
+    const finalUnitPrice = Math.ceil(rawUnitPrice / 1000) * 1000;
+
     const finalSupplyPrice = finalUnitPrice * newItem.qty;
 
     // Prepare Payload
@@ -437,12 +467,18 @@ export function useEstimateLogic(estimateId: string | null) {
       updated_at: new Date().toISOString()
     };
 
-    if ('process_time' in updates) {
+    if ('process_time' in updates || 'difficulty' in updates) {
       payload.processing_cost = Math.round(finalProcCost);
+    }
+    if ('post_processing_id' in updates) {
+      payload.post_process_cost = Math.round(postProcCost);
+    }
+    if ('heat_treatment_id' in updates) {
+      payload.heat_treatment_cost = Math.round(heatTreatCost);
     }
 
     // Always recalc totals if any relevant field changed
-    if ('process_time' in updates || 'profit_rate' in updates) {
+    if ('process_time' in updates || 'profit_rate' in updates || 'difficulty' in updates || 'post_processing_id' in updates || 'heat_treatment_id' in updates) {
       payload.unit_price = finalUnitPrice;
       payload.supply_price = finalSupplyPrice;
     }
@@ -774,9 +810,18 @@ export function useEstimateLogic(estimateId: string | null) {
     selectedItemIds, setSelectedItemIds,
     bulkWorkDays, setBulkWorkDays,
     fileInputRef,
+    // Data
+    // materials, postProcessings, clients, excelPresets are already included above?
+    // references line 36 destructuring? No this is return.
+
+    // Check duplication. 
+    // It seems I have them added in Step 368 and they were already there?
+    // Let's just keep one set.
+    heatTreatments, // [NEW]
+    excelPresets,
     quotationTerms, setQuotationTerms,
     companyInfo,
-    excelPresets, handleExportExcel,
+    handleExportExcel,
     // Actions
     handleClientChange, handleSaveHeader, handleStatusChange,
     openItemModal, handleDeleteItem, handleDeleteSelected, handleBulkUpdateWorkDays,

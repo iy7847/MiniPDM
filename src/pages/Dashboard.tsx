@@ -11,6 +11,7 @@ import { EstimateDetail } from './EstimateDetail';
 import { OrderDetail } from './OrderDetail';
 import { ShipmentList } from './ShipmentList';
 import { ExpenseAnalysis } from './ExpenseAnalysis';
+import { EstimateSearch } from './EstimateSearch'; // [New]
 import { useState } from 'react';
 import { useProfile } from '../hooks/useProfile';
 
@@ -41,6 +42,8 @@ export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
         return <Estimates onNavigate={handleNavigateWithId} />;
       case 'estimate-detail':
         return <EstimateDetail estimateId={selectedId} onBack={() => onNavigate('estimates')} onNavigate={handleNavigateWithId} />;
+      case 'estimate-search':
+        return <EstimateSearch onNavigate={handleNavigateWithId} />;
       case 'settings':
         return <Settings />;
       case 'orders':
@@ -50,7 +53,7 @@ export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
       case 'shipments':
         return <ShipmentList onNavigate={handleNavigateWithId} />;
       case 'expense-analysis':
-        return <ExpenseAnalysis />; // New Route
+        return <ExpenseAnalysis />;
       case 'dashboard':
       default:
         return <DashboardHome onNavigate={handleNavigateWithId} />;

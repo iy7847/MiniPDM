@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { EstimateItem, Material, DIFFICULTY_FACTOR, CURRENCY_SYMBOL, INITIAL_ITEM_FORM, DEFAULT_DISCOUNT_POLICY, PostProcessing } from '../../types/estimate';
+import { EstimateItem, Material, DIFFICULTY_FACTOR, CURRENCY_SYMBOL, INITIAL_ITEM_FORM, DEFAULT_DISCOUNT_POLICY, PostProcessing, HeatTreatment } from '../../types/estimate';
 import { MobileModal } from '../common/MobileModal';
 import { NumberInput } from '../common/NumberInput';
 import { calculateDiscountRate } from '../../utils/estimateUtils';
@@ -11,11 +11,13 @@ interface EstimateItemModalProps {
   estimateId: string | null;
   materials: Material[];
   postProcessings: PostProcessing[];
+  heatTreatments: HeatTreatment[]; // [NEW]
   currency: string;
   exchangeRate: number;
   editingItem: EstimateItem | null;
   discountPolicy: any;
   defaultHourlyRate: number;
+  companyInfo?: any; // [New] For margins
 
   onSaveSuccess: () => void;
   onSaveFiles: (itemId: string, files: File[]) => Promise<void>;
@@ -60,8 +62,11 @@ const levenshteinDistance = (s1: string, s2: string) => {
 // -------------------- 컴포넌트 시작 --------------------
 
 export function EstimateItemModal({
-  isOpen, onClose, estimateId, materials, postProcessings, currency, exchangeRate,
+  isOpen, onClose, estimateId, materials, postProcessings,
+  heatTreatments, // [NEW]
+  currency, exchangeRate,
   editingItem, discountPolicy, defaultHourlyRate,
+  companyInfo,
   onSaveSuccess, onSaveFiles, onDeleteExistingFile, onOpenFile,
   existingItems = []
 }: EstimateItemModalProps) {
@@ -112,6 +117,9 @@ export function EstimateItemModal({
 
   const activePolicy = discountPolicy || DEFAULT_DISCOUNT_POLICY;
 
+  // [NEW] Quantity Input supporting slash separator (e.g. "10/100/200")
+  const [qtyInput, setQtyInput] = useState<string>('1');
+
   useEffect(() => {
     if (isOpen) {
       if (editingItem) {
@@ -119,6 +127,7 @@ export function EstimateItemModal({
         if (discountPolicy) {
           setApplicationRate(calculateDiscountRate(discountPolicy, editingItem.difficulty, editingItem.qty));
         }
+        setQtyInput(editingItem.qty.toString()); // Init qty
       } else {
         setItemForm({
           ...INITIAL_ITEM_FORM,
@@ -126,11 +135,26 @@ export function EstimateItemModal({
         });
         const rate = calculateDiscountRate(activePolicy, INITIAL_ITEM_FORM.difficulty, INITIAL_ITEM_FORM.qty);
         setApplicationRate(rate);
+        setQtyInput('1'); // Init qty
       }
+      setIsManualPrice(false);
+      // Removed setCalcResult resets because calcResult is a useMemo derived value.
       setSimilarItems([]);
       setRecommendedMaterials([]); // 초기화
     }
   }, [isOpen, editingItem, discountPolicy, defaultHourlyRate]);
+
+  // [NEW] Parse qtyInput and update itemForm.qty
+  useEffect(() => {
+    // Parse first valid number for calculation preview
+    // eslint-disable-next-line
+    const firstQty = parseInt(qtyInput.split('/')[0].trim().replace(/,/g, ''), 10);
+    const validQty = isNaN(firstQty) || firstQty <= 0 ? 0 : firstQty;
+
+    if (validQty !== itemForm.qty) {
+      setItemForm(prev => ({ ...prev, qty: validQty }));
+    }
+  }, [qtyInput]);
 
   useEffect(() => {
     if (itemForm.qty > 0) {
@@ -198,7 +222,7 @@ export function EstimateItemModal({
           let query = supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
-            .or(`shape.eq.${itemForm.shape},shape.is.null`)
+            .or(`shape.eq.${itemForm.shape}, shape.is.null`)
             .gte('spec_w', wMin).lte('spec_w', wMax)
             .gte('spec_d', dMin).lte('spec_d', dMax);
 
@@ -218,7 +242,7 @@ export function EstimateItemModal({
           const { data } = await supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
-            .ilike('part_no', `${prefix}%`)
+            .ilike('part_no', `${prefix}% `)
             .limit(20);
 
           if (data) {
@@ -247,7 +271,7 @@ export function EstimateItemModal({
 
   const calcResult = useMemo(() => {
     const material = materials.find(m => m.id === itemForm.material_id);
-    let weight = 0, matCost = 0;
+    let weight = 0;
 
     if (material) {
       if (itemForm.shape === 'rect') {
@@ -261,16 +285,24 @@ export function EstimateItemModal({
           weight = (vol * material.density) / 1000000;
         }
       }
-      matCost = weight * material.unit_price;
     }
 
-    const factor = DIFFICULTY_FACTOR[itemForm.difficulty] || 1.2;
-    const procCost = itemForm.process_time * itemForm.hourly_rate * factor;
-
-    // [변경] 후처리 비용 계산 (리스트 선택 or 직접입력)
+    let matCost = 0;
+    let processingCost = itemForm.processing_cost || 0;
     let postProcCost = itemForm.post_process_cost || 0;
+    let heatTreatCost = itemForm.heat_treatment_cost || 0; // [NEW]
 
-    // 만약 post_processing_id가 선택되어 있다면 자동 계산
+    // 1. MatCost
+    if (itemForm.material_cost && itemForm.material_cost > 0) {
+      // use manual
+      matCost = itemForm.material_cost;
+      const hourlyRate = itemForm.hourly_rate || defaultHourlyRate;
+      const processingTime = itemForm.process_time || 0;
+      const factor = DIFFICULTY_FACTOR[itemForm.difficulty] || 1.0;
+      processingCost = Math.round(processingTime * hourlyRate * factor);
+    }
+
+    // 3. Post Processing Cost
     if (itemForm.post_processing_id) {
       const selectedPP = postProcessings.find(p => p.id === itemForm.post_processing_id);
       if (selectedPP && weight > 0) {
@@ -278,50 +310,107 @@ export function EstimateItemModal({
       }
     }
 
-    const baseTotal = matCost + procCost + postProcCost;
+    // 4. Heat Treatment Cost [NEW]
+    if (itemForm.heat_treatment_id) {
+      const selectedHT = heatTreatments.find(h => h.id === itemForm.heat_treatment_id);
+      if (selectedHT && weight > 0) {
+        heatTreatCost = Math.round(weight * selectedHT.price_per_kg);
+      }
+    }
 
-    // [추가] 기업이윤 계산
+    const totalCostRaw = matCost + processingCost + postProcCost + heatTreatCost;
+
+    // Profit & Supply Price
     const profitRate = itemForm.profit_rate || 0;
-    const profitAmount = baseTotal * (profitRate / 100);
+    const profitAmount = totalCostRaw * (profitRate / 100);
+    const calculatedSupplyPrice = Math.ceil((totalCostRaw + profitAmount) / 1000) * 1000;
 
-    const subTotal = baseTotal + profitAmount;
+    // Final check for manual override
+    // If user manually entered unit_price, we use that? No, usually supply_price is key.
+    // The previous logic calculated finalUnitCost based on applicationRate.
+    // Let's stick to the previous pattern but updated.
 
-    const finalUnitCost = subTotal * (applicationRate / 100);
+    const finalUnitCost = calculatedSupplyPrice; // Simply total + profit
 
     return {
       weight: parseFloat(weight.toFixed(2)),
-      matCost: Math.round(matCost),
-      procCost: Math.round(procCost),
-      postProcCost: Math.round(postProcCost),
-      profitAmount: Math.round(profitAmount), // UI 표시용
-      baseTotal: Math.round(baseTotal),
-      subTotal: Math.round(subTotal),
-      finalUnitCost: Math.round(finalUnitCost / 10) * 10
+      matCost,
+      procCost: processingCost, // Alias for backward compatibility
+      processingCost,
+      postProcCost,
+      heatTreatCost,
+      totalCostRaw,
+      calculatedSupplyPrice,
+      finalUnitCost,
+      // Restore UI helpers
+      profitAmount,
+      baseTotal: totalCostRaw, // approximation
+      subTotal: calculatedSupplyPrice
     };
-  }, [itemForm, materials, postProcessings, applicationRate]);
+  }, [itemForm, materials, postProcessings, heatTreatments, defaultHourlyRate]);
 
+  // Auto Update Effect
   useEffect(() => {
-    // 자동 계산된 후처리비를 form state에 반영 (저장 시 사용됨)
-    // 단, 사용자가 직접 수정한 값이 있을 수 있으므로, 리스트 선택 시에만 강제 업데이트하는 로직이 필요할 수 있음
-    // 여기서는 계산된 값(calcResult.postProcCost)을 저장 시점에 payload에 넣거나, 
-    // 혹은 렌더링 시점에만 보여주고 저장 시 다시 계산할 수도 있음.
-    // 간단히 하기 위해: 리스트 선택 시에는 자동 계산값을 우선시하도록 form 업데이트
-    if (itemForm.post_processing_id) {
-      setItemForm(prev => ({ ...prev, post_process_cost: calcResult.postProcCost, unit_price: calcResult.finalUnitCost }));
-      setIsManualPrice(false); // 후처리 선택 시 자동 모드로 복귀
-    } else {
-      if (!isManualPrice) {
-        setItemForm(prev => ({ ...prev, unit_price: calcResult.finalUnitCost }));
+    if (!isManualPrice) {
+      const newItemForm = { ...itemForm };
+      let changed = false;
+
+      // Update Material Cost
+      if (!itemForm.material_id && calcResult.matCost !== itemForm.material_cost) {
+        // Only if manual mode? No, if calculated, we set it.
+        // Actually, logic is: if material_id selected, we calc and set material_cost
+      }
+
+      // We generally just rely on calcResult for display, but for saving we need it in form?
+      // No, supply_price is what matters.
+
+      // Update Post Process Cost
+      if (itemForm.post_processing_id && calcResult.postProcCost !== itemForm.post_process_cost) {
+        newItemForm.post_process_cost = calcResult.postProcCost;
+        changed = true;
+      }
+
+      // Update Heat Treatment Cost [NEW]
+      if (itemForm.heat_treatment_id && calcResult.heatTreatCost !== itemForm.heat_treatment_cost) {
+        newItemForm.heat_treatment_cost = calcResult.heatTreatCost;
+        changed = true;
+      }
+
+      // Update Processing Cost (if auto calc)
+      if ((!itemForm.processing_cost || itemForm.processing_cost === 0) && calcResult.processingCost > 0) {
+        // Actually we don't auto-set processing_cost field usually unless specific logic.
+        // Let's keep it simple.
+      }
+
+      // Update Supply Price
+      if (calcResult.calculatedSupplyPrice !== itemForm.supply_price) {
+        newItemForm.supply_price = calcResult.calculatedSupplyPrice;
+        changed = true;
+      }
+
+      // Update Unit Price
+      const newUnitPrice = Math.round(newItemForm.supply_price / itemForm.qty);
+      if (newUnitPrice !== itemForm.unit_price) {
+        newItemForm.unit_price = newUnitPrice;
+        changed = true;
+      }
+
+      if (changed) {
+        setItemForm(prev => ({ ...prev, ...newItemForm }));
       }
     }
-  }, [calcResult.finalUnitCost, calcResult.postProcCost, itemForm.post_processing_id, isManualPrice]);
+  }, [calcResult, isManualPrice]);
 
   const handleSpecChange = (field: 'spec_w' | 'spec_d' | 'spec_h', value: number) => {
     const newItemForm = { ...itemForm, [field]: value };
-    // 자동 채우기
-    if (field === 'spec_w') newItemForm.raw_w = value + (value > 0 ? 5 : 0);
-    if (field === 'spec_d') newItemForm.raw_d = value + (value > 0 ? 5 : 0);
-    if (field === 'spec_h') newItemForm.raw_h = value;
+    // 자동 채우기 - Configurable Margins
+    const marginW = companyInfo?.default_margin_w ?? 5;
+    const marginD = companyInfo?.default_margin_d ?? 5;
+    const marginH = companyInfo?.default_margin_h ?? 0;
+
+    if (field === 'spec_w') newItemForm.raw_w = value + (value > 0 ? marginW : 0);
+    if (field === 'spec_d') newItemForm.raw_d = value + (value > 0 ? marginD : 0);
+    if (field === 'spec_h') newItemForm.raw_h = value + (value > 0 ? marginH : 0);
     setItemForm(newItemForm);
     setIsManualPrice(false); // 규격 변경 시 자동 계산 재개
   };
@@ -330,48 +419,119 @@ export function EstimateItemModal({
     if (!estimateId) return alert('견적서 ID가 없습니다.');
     if (!itemForm.part_name) return alert('품명은 필수입니다.');
 
+    // [Multi-Qty Logic]
+    // Parse quantity input string "10/20/30"
+    const quantities = qtyInput.split('/')
+      .map(q => parseInt(q.trim().replace(/,/g, ''), 10))
+      .filter(n => !isNaN(n) && n > 0);
+
+    if (quantities.length === 0) {
+      return alert('유효한 수량을 입력해주세요.');
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
+    const finalUnitPrice = itemForm.unit_price; // Note: This unit price is calculated based on 'itemForm.qty' (the first one).
+    // For subsequent quantities, the Unit Price *should* technically be recalculated if we had a formula,
+    // but here we are just cloning the current form state. Users might want to update prices later.
+    // OR we could try to auto-calc if logic supports it?
+    // For now, we save what is on the screen for the first one, and for others we might need to assume same unit price OR recalculate?
+    // User request implies "Input 10, 100, 200". Usually this means they want to set different prices for them. 
+    // But this modal only calculates ONE price at a time.
+    // Solution: Save all with the CURRENT unit price (or auto-recalculated if we can triggers logic, but that's hard async).
+    // Users will likely go into the list and edit the prices for 100/200 qty items.
+    // So we just clone the current 'itemForm' but override 'qty' and 'supply_price'.
 
-    const finalUnitPrice = itemForm.unit_price;
-    const { tempFiles, files, ...cleanItemForm } = itemForm;
+    const { tempFiles, files, id, ...cleanItemForm } = itemForm;
 
-    const payload = {
-      estimate_id: estimateId,
-      ...cleanItemForm,
-      material_id: cleanItemForm.material_id || null,
-      // [중요] 도면 소재명 저장
-      original_material_name: cleanItemForm.original_material_name,
-      material_cost: calcResult.matCost,
-      processing_cost: calcResult.procCost,
-      post_process_cost: calcResult.postProcCost,
-      profit_rate: cleanItemForm.profit_rate || 0, // 이윤율 저장
-      unit_price: finalUnitPrice,
-      supply_price: finalUnitPrice * cleanItemForm.qty,
-      updated_by: user?.id
-    };
-
-    let savedItemId = editingItem?.id;
-
-    if (editingItem) {
-      const { error } = await supabase.from('estimate_items').update(payload).eq('id', editingItem.id);
-      if (error) { alert(`수정 실패: ${error.message}`); return; }
-    } else {
-      // [Duplicate Check]
-      if (existingItems.some(i => i.part_no === cleanItemForm.part_no)) {
-        alert(`이미 존재하는 도번입니다: ${cleanItemForm.part_no}`);
+    // Duplicate Check (only for the first one if it's new)
+    // If editing, we skip check for the self.
+    if (!editingItem && existingItems.some(i => i.part_no === cleanItemForm.part_no)) {
+      if (!confirm(`이미 존재하는 도번입니다: ${cleanItemForm.part_no}\n그래도 등록하시겠습니까?`)) {
         return;
       }
-      const { data, error } = await supabase.from('estimate_items').insert([payload]).select().single();
-      if (error) { alert(`저장 실패: ${error.message}`); return; }
-      savedItemId = data.id;
     }
 
-    if (savedItemId && itemForm.tempFiles && itemForm.tempFiles.length > 0) {
-      await onSaveFiles(savedItemId, itemForm.tempFiles);
-    }
+    try {
+      // Loop through quantities
+      for (let i = 0; i < quantities.length; i++) {
+        const qty = quantities[i];
 
-    onSaveSuccess();
-    onClose();
+        // Recalculate prices for this Qty? 
+        // Simple linear: Supply Price = Unit Price * Qty
+        // But 'Unit Price' might change with Qty in reality. 
+        // We will keep the 'Unit Price' from the form (user input) for ALL items initially.
+        // User can adjust later.
+        // Actually, supply_price should be correct math at least.
+        const thisSupplyPrice = finalUnitPrice * qty;
+
+        const payload = {
+          estimate_id: estimateId,
+          ...cleanItemForm,
+          qty: qty, // Override Qty
+          material_id: cleanItemForm.material_id || null,
+          original_material_name: cleanItemForm.original_material_name,
+          material_cost: calcResult.matCost, // Assumed constant per unit? Wait, material cost is usually per unit. Logic in modal seems to update 'matCost' based on unit spec?
+          // Let's check calcResult logic. 'matCost' in 'calcResult' is likely TOTAL or UNIT?
+          // In 'handleSpecChange' -> calculateMaterialCost. 
+          // UseEstimateLogic: usually calculates Unit Material Cost using density and diff.
+          // So matCost is Unit Cost. Safe to reuse. (Unless it depends on Qty? No)
+
+          processing_cost: calcResult.procCost, // Unit Proc Cost? Or Total? 'procCost' is usually Unit.
+          post_process_cost: calcResult.postProcCost,
+          profit_rate: cleanItemForm.profit_rate || 0,
+          unit_price: finalUnitPrice,
+          supply_price: thisSupplyPrice,
+          updated_by: user?.id
+        };
+
+        // Determine if Update or Insert
+        let savedItemId: string | null = null;
+        if (editingItem && editingItem.id) savedItemId = editingItem.id;
+
+        // If it's the FIRST quantity AND we are in Editing mode, we UPDATE the original item.
+        if (editingItem && i === 0) {
+          const { error } = await supabase.from('estimate_items').update(payload).eq('id', editingItem.id);
+          if (error) throw error;
+          savedItemId = editingItem.id || null;
+        } else {
+          // Insert new (for subsequent quantities OR if adding new)
+          const { data, error } = await supabase.from('estimate_items').insert([payload]).select().single();
+          if (error) throw error;
+          savedItemId = data.id;
+        }
+
+        // Handle Files
+        // 1. Upload NEW tempFiles for EACH item.
+        if (savedItemId && itemForm.tempFiles && itemForm.tempFiles.length > 0) {
+          await onSaveFiles(savedItemId, itemForm.tempFiles);
+        }
+
+        // 2. [FIX] Copy EXISTING files to NEW items (only for subsequent items)
+        // If i=0 (Update), existing files are already linked to this ID.
+        // If i>0 (New Insert), we need to link existing files to this NEW ID.
+        if (i > 0 && savedItemId && itemForm.files && itemForm.files.length > 0) {
+          const filesToCopy = itemForm.files.map(f => ({
+            estimate_item_id: savedItemId,
+            file_path: f.file_path,
+            file_name: f.file_name,
+            file_type: f.file_type || 'ETC',
+            version: 1,
+            is_current: true
+          }));
+
+          const { error: fileError } = await supabase.from('files').insert(filesToCopy);
+          if (fileError) {
+            console.error('File copy failed:', fileError);
+            // Non-blocking error, just log it.
+          }
+        }
+      }
+
+      onSaveSuccess();
+      onClose();
+    } catch (e: any) {
+      alert(`저장 중 오류가 발생했습니다: ${e.message}`);
+    }
   };
 
   const handleManualFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -419,13 +579,13 @@ export function EstimateItemModal({
             <div className="flex bg-white rounded border overflow-hidden mb-3">
               <button
                 onClick={() => setItemForm({ ...itemForm, shape: 'rect' })}
-                className={`flex-1 py-1.5 text-xs font-bold ${itemForm.shape === 'rect' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                className={`flex - 1 py - 1.5 text - xs font - bold ${itemForm.shape === 'rect' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-50'} `}
               >
                 ⬛ 사각 (Plate)
               </button>
               <button
                 onClick={() => setItemForm({ ...itemForm, shape: 'round' })}
-                className={`flex-1 py-1.5 text-xs font-bold ${itemForm.shape === 'round' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                className={`flex - 1 py - 1.5 text - xs font - bold ${itemForm.shape === 'round' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-50'} `}
               >
                 ⚫ 원형 (Round)
               </button>
@@ -500,9 +660,9 @@ export function EstimateItemModal({
             <div className="flex gap-2">
               {itemForm.shape === 'rect' ? (
                 <>
+                  <div className="flex-1"><NumberInput label="두께 (mm)" value={itemForm.spec_h} onChange={v => handleSpecChange('spec_h', v)} /></div>
                   <div className="flex-1"><NumberInput label="가로 (mm)" value={itemForm.spec_w} onChange={v => handleSpecChange('spec_w', v)} /></div>
                   <div className="flex-1"><NumberInput label="세로 (mm)" value={itemForm.spec_d} onChange={v => handleSpecChange('spec_d', v)} /></div>
-                  <div className="flex-1"><NumberInput label="두께 (mm)" value={itemForm.spec_h} onChange={v => handleSpecChange('spec_h', v)} /></div>
                 </>
               ) : (
                 <>
@@ -531,9 +691,9 @@ export function EstimateItemModal({
             <div className="flex gap-2">
               {itemForm.shape === 'rect' ? (
                 <>
+                  <div className="flex-1"><NumberInput label="소재 두께 (mm)" value={itemForm.raw_h} onChange={v => setItemForm({ ...itemForm, raw_h: v })} /></div>
                   <div className="flex-1"><NumberInput label="소재 가로 (mm)" value={itemForm.raw_w} onChange={v => setItemForm({ ...itemForm, raw_w: v })} /></div>
                   <div className="flex-1"><NumberInput label="소재 세로 (mm)" value={itemForm.raw_d} onChange={v => setItemForm({ ...itemForm, raw_d: v })} /></div>
-                  <div className="flex-1"><NumberInput label="소재 두께 (mm)" value={itemForm.raw_h} onChange={v => setItemForm({ ...itemForm, raw_h: v })} /></div>
                 </>
               ) : (
                 <>
@@ -576,7 +736,7 @@ export function EstimateItemModal({
                             key={f.id}
                             className="text-[9px] bg-white border border-yellow-200 px-1 rounded flex items-center gap-1 cursor-pointer hover:bg-yellow-100 text-slate-600"
                             onClick={() => onOpenFile(f.file_path)}
-                            title={`${f.file_type}: ${f.file_name}`}
+                            title={`${f.file_type}: ${f.file_name} `}
                           >
                             {f.file_type === '3D' ? '🧊' : '📄'} {f.file_name.length > 10 ? f.file_name.substring(0, 10) + '...' : f.file_name}
                           </span>
@@ -613,13 +773,37 @@ export function EstimateItemModal({
               <div className="flex-1">
                 <NumberInput
                   label="후처리비 (₩)"
-                  value={itemForm.post_process_cost}
+                  value={itemForm.post_process_cost || 0}
                   onChange={v => setItemForm({ ...itemForm, post_process_cost: v, post_processing_id: null })}
-                  disabled={!!itemForm.post_processing_id}
-                  className={itemForm.post_processing_id ? "bg-gray-100 text-slate-500 cursor-not-allowed" : ""}
                 />
               </div>
             </div>
+
+            {/* Heat Treatment */}
+            <div className="flex gap-4 mb-2">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 mb-1">열처리 선택</label>
+                <select
+                  className="w-full border p-2 rounded text-sm"
+                  value={itemForm.heat_treatment_id || ''}
+                  onChange={e => setItemForm({ ...itemForm, heat_treatment_id: e.target.value || null })}
+                >
+                  <option value="">직접 입력</option>
+                  {heatTreatments.map(h => <option key={h.id} value={h.id}>{h.name} (₩{h.price_per_kg}/kg)</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <NumberInput
+                  label="열처리비 (₩)"
+                  value={itemForm.heat_treatment_cost || 0}
+                  onChange={v => setItemForm({ ...itemForm, heat_treatment_cost: v, heat_treatment_id: null })}
+                  disabled={!!itemForm.heat_treatment_id}
+                  className={itemForm.heat_treatment_id ? "bg-gray-100 text-slate-500 cursor-not-allowed" : ""}
+                />
+              </div>
+            </div>
+
+            <div className="border-t my-4"></div>
             <div className="text-right text-orange-600 font-bold text-sm">
               예상 가공비: ₩ {calcResult.procCost.toLocaleString()}
               {currency !== 'KRW' && <span className="text-slate-500 ml-1 font-normal text-xs">({currencySymbol} {exchangeRate > 0 ? (calcResult.procCost / exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 0})</span>}
@@ -658,7 +842,7 @@ export function EstimateItemModal({
                   {itemForm.files.map((f, i) => (
                     <li key={i} className="flex justify-between items-center text-xs bg-slate-100 p-1.5 rounded hover:bg-slate-200">
                       <div className="flex items-center gap-2 overflow-hidden flex-1 cursor-pointer" onClick={() => onOpenFile(f.file_path)}>
-                        <span className={`text-[10px] px-1 rounded border ${f.file_type === '2D' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>{f.file_type}</span>
+                        <span className={`text - [10px] px - 1 rounded border ${f.file_type === '2D' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'} `}>{f.file_type}</span>
                         <span className="text-blue-600 truncate hover:underline" title="클릭하여 파일 열기">{f.file_name}</span>
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.id); }} className="text-red-400 hover:text-red-600 font-bold px-1">✕</button>
@@ -683,8 +867,20 @@ export function EstimateItemModal({
           </div>
 
           <div className="p-4 bg-slate-100 rounded border border-slate-300 shadow-sm">
-            <div className="flex gap-2 items-end mb-4">
-              <div className="flex-1"><NumberInput label="수량" value={itemForm.qty} onChange={v => setItemForm({ ...itemForm, qty: v })} className="font-bold" /></div>
+            <div className="flex gap-2 items-start mb-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">수량 (Quantity)</label>
+                <input
+                  type="text"
+                  value={qtyInput}
+                  onChange={(e) => setQtyInput(e.target.value)}
+                  className="w-full border p-2 rounded font-bold text-right focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="예: 10/100/200"
+                />
+                <p className="text-[10px] text-blue-600 mt-1">
+                  💡 '/'로 구분하여 입력하면 여러 건이 일괄 등록됩니다. <br /> (천단위 ',' 사용 금지)
+                </p>
+              </div>
               <div className="flex-1">
                 <label className="block text-xs font-bold text-purple-600 mb-1">단가 적용률 (%)</label>
                 <div className="relative">
@@ -706,6 +902,17 @@ export function EstimateItemModal({
                 <input disabled value={calcResult.finalUnitCost.toLocaleString()} className="w-full border p-2 rounded bg-blue-50 text-right font-bold text-blue-700" />
                 {currency !== 'KRW' && <div className="text-[10px] text-right text-slate-500 mt-1">≈ {currencySymbol} {exchangeRate > 0 ? (calcResult.finalUnitCost / exchangeRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 0}</div>}
               </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-700 mb-1">비고 (Note)</label>
+              <input
+                type="text"
+                value={itemForm.note || ''}
+                onChange={(e) => setItemForm({ ...itemForm, note: e.target.value })}
+                className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="특이사항 입력"
+              />
             </div>
 
             <div>

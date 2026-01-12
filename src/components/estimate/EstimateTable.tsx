@@ -1,9 +1,11 @@
-import { EstimateItem, Material, CURRENCY_SYMBOL } from '../../types/estimate';
+import { EstimateItem, Material, CURRENCY_SYMBOL, PostProcessing, HeatTreatment } from '../../types/estimate';
 import { Button } from '../common/ui/Button';
 
 interface EstimateTableProps {
   items: EstimateItem[];
   materials: Material[];
+  postProcessings: PostProcessing[]; // [New]
+  heatTreatments: HeatTreatment[];   // [New]
   currency: string;
   exchangeRate: number;
   selectedItemIds: Set<string>;
@@ -17,7 +19,7 @@ interface EstimateTableProps {
 }
 
 export function EstimateTable({
-  items, materials, currency, exchangeRate,
+  items, materials, postProcessings, heatTreatments, currency, exchangeRate,
   selectedItemIds, onToggleSelectAll, onToggleSelectItem, onEditItem, onDeleteItem, onUpdateItem,
   canViewMargins = true,
 
@@ -43,6 +45,12 @@ export function EstimateTable({
               <th className="px-3 py-3 text-left text-xs tracking-wider">도번/품명</th>
               <th className="px-3 py-3 text-left text-xs tracking-wider">규격/소재</th>
               <th className="px-3 py-3 text-right text-xs tracking-wider">무게<br />(kg)</th>
+
+              {/* [New Columns] */}
+              <th className="px-3 py-3 text-center text-xs tracking-wider w-24">열처리</th>
+              <th className="px-3 py-3 text-center text-xs tracking-wider w-24">후처리</th>
+              <th className="px-3 py-3 text-center text-xs tracking-wider w-16">난이도</th>
+
               <th className="px-3 py-3 text-right text-xs tracking-wider">수량</th>
               {canViewMargins && (
                 <>
@@ -57,7 +65,7 @@ export function EstimateTable({
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
             {items.length === 0 ? (
-              <tr><td colSpan={canViewMargins ? 10 : 8} className="text-center py-12 text-slate-400">등록된 품목이 없습니다.</td></tr>
+              <tr><td colSpan={canViewMargins ? 13 : 11} className="text-center py-12 text-slate-400">등록된 품목이 없습니다.</td></tr>
             ) : (
               items.map((item, idx) => {
                 const mat = item.material_id ? materials.find(m => m.id === item.material_id) : null;
@@ -102,6 +110,39 @@ export function EstimateTable({
                     <td className="px-3 py-4 whitespace-nowrap text-xs text-right text-slate-900 font-bold">
                       {weight > 0 ? weight.toFixed(2) : '-'}
                     </td>
+
+                    {/* [New Columns Inputs] */}
+                    <td className="px-1 py-3">
+                      <select
+                        className="w-full text-[11px] p-1 border rounded bg-slate-50 focus:bg-white truncate"
+                        value={item.heat_treatment_id || ''}
+                        onChange={(e) => onUpdateItem(item.id!, { heat_treatment_id: e.target.value || null })}
+                      >
+                        <option value="">(없음)</option>
+                        {heatTreatments.map(ht => <option key={ht.id} value={ht.id}>{ht.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-1 py-3">
+                      <select
+                        className="w-full text-[11px] p-1 border rounded bg-slate-50 focus:bg-white truncate"
+                        value={item.post_processing_id || ''}
+                        onChange={(e) => onUpdateItem(item.id!, { post_processing_id: e.target.value || null })}
+                      >
+                        <option value="">(없음)</option>
+                        {postProcessings.map(pp => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-1 py-3">
+                      <select
+                        className="w-full text-[11px] p-1 border rounded bg-slate-50 focus:bg-white text-center"
+                        value={item.difficulty || 'B'}
+                        onChange={(e) => onUpdateItem(item.id!, { difficulty: e.target.value })}
+                      >
+                        {/* A~F */}
+                        {['A', 'B', 'C', 'D', 'E', 'F'].map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </td>
+
                     <td className="px-3 py-4 whitespace-nowrap text-xs text-right text-slate-900">{item.qty}</td>
 
                     {/* Editable Process Time */}
@@ -109,6 +150,7 @@ export function EstimateTable({
                       <td className="px-2 py-3 whitespace-nowrap text-right w-20">
                         <input
                           type="number"
+                          step="0.1"
                           value={item.process_time || 0}
                           onChange={(e) => onUpdateItem(item.id!, { process_time: parseFloat(e.target.value) })}
                           className="w-16 p-1 text-right text-xs border rounded focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 focus:bg-white transition-all"

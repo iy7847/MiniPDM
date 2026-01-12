@@ -28,26 +28,51 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
         if (!profile?.company_id) return;
 
         setLoading(true);
-        let query = supabase
-            .from('orders')
-            .select('*, clients!inner(name)')
-            .eq('company_id', profile.company_id)
-            .order('order_date', { ascending: false });
 
-        if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
-        if (filters.startDate) query = query.gte('order_date', filters.startDate);
-        if (filters.endDate) query = query.lte('order_date', `${filters.endDate}T23:59:59`);
-        if (filters.keyword) query = query.or(`po_no.ilike.%${filters.keyword}%,clients.name.ilike.%${filters.keyword}%`);
+        try {
+            let query = supabase
+                .from('orders')
+                .select('*, clients!inner(name)')
+                .eq('company_id', profile.company_id)
+                .order('order_date', { ascending: false });
 
-        const { data, error } = await query;
-        if (error) {
-            console.error("Error fetching orders:", error);
-            // Fallback for demo if table doesn't exist yet
-            setOrders([]);
-        } else {
-            setOrders(data || []);
+            if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
+            if (filters.startDate) query = query.gte('order_date', filters.startDate);
+            if (filters.endDate) query = query.lte('order_date', `${filters.endDate}T23:59:59`);
+
+            if (filters.keyword) {
+                // [Fix] Cross-table OR search workaround needed for PostgREST
+                // 1. Find matching clients
+                const { data: matchedClients } = await supabase
+                    .from('clients')
+                    .select('id')
+                    .eq('company_id', profile.company_id)
+                    .ilike('name', `%${filters.keyword}%`);
+
+                const clientIds = matchedClients?.map(c => c.id) || [];
+
+                // 2. Build OR condition: po_no LIKE keyword OR client_id IN (...)
+                let orConditions = `po_no.ilike.%${filters.keyword}%`;
+                if (clientIds.length > 0) {
+                    orConditions += `,client_id.in.(${clientIds.join(',')})`;
+                }
+
+                query = query.or(orConditions);
+            }
+
+            const { data, error } = await query;
+            if (error) {
+                console.error("Error fetching orders:", error);
+                // Fallback for demo if table doesn't exist yet
+                setOrders([]);
+            } else {
+                setOrders(data || []);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleDeleteOrder = async (e: React.MouseEvent, orderId: string, estimateId: string | null) => {

@@ -4,6 +4,7 @@ import { useProfile } from '../hooks/useProfile';
 import { PageHeader } from '../components/common/ui/PageHeader';
 import { Section } from '../components/common/ui/Section';
 import { Card } from '../components/common/ui/Card';
+import { MultiSelect } from '../components/common/ui/MultiSelect';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -33,7 +34,7 @@ ChartJS.register(
 export function ExpenseAnalysis() {
     const { profile } = useProfile();
     const [loading, setLoading] = useState(true);
-    const [items, setItems] = useState<any[]>([]);
+    const [allItems, setAllItems] = useState<any[]>([]); // Raw fetched data
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
 
     // Filters
@@ -48,6 +49,12 @@ export function ExpenseAnalysis() {
         groupBy: 'list' as 'list' | 'week' | 'month' | 'quarter' | 'year'
     });
 
+    // Multi-Select Filter State
+    const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
+    const [selectedPostProcessings, setSelectedPostProcessings] = useState<string[]>([]);
+    const [selectedHeatTreatments, setSelectedHeatTreatments] = useState<string[]>([]);
+
+    // Selection for Checkboxes (Row Selection)
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
@@ -72,7 +79,7 @@ export function ExpenseAnalysis() {
         setLoading(true);
 
         // Fetch Shipped Items joined with Orders and Estimates
-        // Logic: shipment_items -> order_items -> estimate_items
+        // Logic: shipment_items -> order_items -> estimate_items -> (materials, post_processings, heat_treatments)
         let query = supabase
             .from('shipment_items')
             .select(`
@@ -81,7 +88,8 @@ export function ExpenseAnalysis() {
                 created_at,
                 shipments!inner(
                     shipment_no,
-                    shipped_at
+                    shipped_at,
+                    company_id
                 ),
                 order_items!inner(
                     id,
@@ -96,7 +104,11 @@ export function ExpenseAnalysis() {
                     ),
                     estimate_items(
                         material_cost,
-                        post_process_cost
+                        post_process_cost,
+                        heat_treatment_cost,
+                        materials(name),
+                        post_processings(name),
+                        heat_treatments(name)
                     )
                 )
             `)
@@ -112,7 +124,7 @@ export function ExpenseAnalysis() {
         const { data, error } = await query;
         if (error) {
             console.error(error);
-            setItems([]);
+            setAllItems([]);
         } else {
             // Flatten Data and Calculate Costs
             const flattened = (data || []).map((item: any) => {
@@ -122,7 +134,14 @@ export function ExpenseAnalysis() {
 
                 const matUnitCost = estItem?.material_cost || 0;
                 const ppUnitCost = estItem?.post_process_cost || 0;
+                const htUnitCost = estItem?.heat_treatment_cost || 0; // Heat Treatment Cost
+
                 const qty = item.quantity || 0;
+
+                // Extract Names
+                const materialName = estItem?.materials?.name || '미지정';
+                const postProcessingName = estItem?.post_processings?.name || '없음';
+                const heatTreatmentName = estItem?.heat_treatments?.name || '없음';
 
                 return {
                     id: item.id,
@@ -133,45 +152,85 @@ export function ExpenseAnalysis() {
                     partName: item.order_items?.part_name,
                     partNo: item.order_items?.part_no,
                     qty: qty,
+
                     matUnitCost,
                     ppUnitCost,
+                    htUnitCost,
+
+                    materialName,
+                    postProcessingName,
+                    heatTreatmentName,
+
                     totalMatCost: matUnitCost * qty,
                     totalPpCost: ppUnitCost * qty,
-                    totalEstCost: (matUnitCost + ppUnitCost) * qty
+                    totalHtCost: htUnitCost * qty,
+                    totalEstCost: (matUnitCost + ppUnitCost + htUnitCost) * qty
                 };
             });
-            setItems(flattened);
+            setAllItems(flattened);
         }
         setLoading(false);
     };
 
-    // Calculate Summaries based on Selection or All
+    // Extract Filter Options from Data
+    const filterOptions = useMemo(() => {
+        const mats = new Set<string>();
+        const pps = new Set<string>();
+        const hts = new Set<string>();
+
+        allItems.forEach(item => {
+            if (item.materialName) mats.add(item.materialName);
+            if (item.postProcessingName) pps.add(item.postProcessingName);
+            if (item.heatTreatmentName) hts.add(item.heatTreatmentName);
+        });
+
+        return {
+            materials: Array.from(mats).sort().map(v => ({ label: v, value: v })),
+            postProcessings: Array.from(pps).sort().map(v => ({ label: v, value: v })),
+            heatTreatments: Array.from(hts).sort().map(v => ({ label: v, value: v })),
+        };
+    }, [allItems]);
+
+    // Apply Client-Side Filters
+    const filteredItems = useMemo(() => {
+        return allItems.filter(item => {
+            if (selectedMaterials.length > 0 && !selectedMaterials.includes(item.materialName)) return false;
+            if (selectedPostProcessings.length > 0 && !selectedPostProcessings.includes(item.postProcessingName)) return false;
+            if (selectedHeatTreatments.length > 0 && !selectedHeatTreatments.includes(item.heatTreatmentName)) return false;
+            return true;
+        });
+    }, [allItems, selectedMaterials, selectedPostProcessings, selectedHeatTreatments]);
+
+    // Calculate Summaries based on Selection or Filtered List
     const summaryData = useMemo(() => {
         const targetItems = selectedItemIds.size > 0
-            ? items.filter(i => selectedItemIds.has(i.id))
-            : items;
+            ? filteredItems.filter(i => selectedItemIds.has(i.id))
+            : filteredItems;
 
         const totalMat = targetItems.reduce((sum, i) => sum + i.totalMatCost, 0);
         const totalPp = targetItems.reduce((sum, i) => sum + i.totalPpCost, 0);
+        const totalHt = targetItems.reduce((sum, i) => sum + i.totalHtCost, 0);
 
         return {
             totalMat,
             totalPp,
-            totalExp: totalMat + totalPp,
+            totalHt,
+            totalExp: totalMat + totalPp + totalHt,
             count: targetItems.length
         };
-    }, [items, selectedItemIds]);
+    }, [filteredItems, selectedItemIds]);
 
     // Grouping Logic for Chart
     const chartData = useMemo(() => {
         const labels: string[] = [];
         const matData: number[] = [];
         const ppData: number[] = [];
+        const htData: number[] = [];
 
         // Group items by date/week/month
-        const groups: Record<string, { mat: number, pp: number }> = {};
+        const groups: Record<string, { mat: number, pp: number, ht: number }> = {};
 
-        items.forEach(item => {
+        filteredItems.forEach(item => {
             const date = new Date(item.shipmentDate);
             let key = date.toLocaleDateString(); // Default List/Daily
 
@@ -180,52 +239,60 @@ export function ExpenseAnalysis() {
             } else if (filters.groupBy === 'year') {
                 key = `${date.getFullYear()}`;
             } else if (filters.groupBy === 'week') {
-                // Simple week number
                 const first = new Date(date.getFullYear(), 0, 1);
                 const dayOfYear = ((date.getTime() - first.getTime()) + 86400000) / 86400000;
                 const week = Math.ceil(dayOfYear / 7);
                 key = `${date.getFullYear()}-W${week}`;
             }
 
-            if (!groups[key]) groups[key] = { mat: 0, pp: 0 };
+            if (!groups[key]) groups[key] = { mat: 0, pp: 0, ht: 0 };
             groups[key].mat += item.totalMatCost;
             groups[key].pp += item.totalPpCost;
+            groups[key].ht += item.totalHtCost;
         });
 
-        // Sort keys
         const sortedKeys = Object.keys(groups).sort();
         sortedKeys.forEach(key => {
             labels.push(key);
             matData.push(groups[key].mat);
             ppData.push(groups[key].pp);
+            htData.push(groups[key].ht);
         });
 
         return {
             labels,
             datasets: [
                 {
-                    label: '소재비 (Estimated)',
+                    label: '소재비 (Material)',
                     data: matData,
-                    backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.5)', // Blue
                     borderColor: 'rgb(59, 130, 246)',
                     borderWidth: 1,
                     stack: 'Stack 0',
                 },
                 {
-                    label: '후처리비 (Estimated)',
+                    label: '후처리비 (Processing)',
                     data: ppData,
-                    backgroundColor: 'rgba(249, 115, 22, 0.5)',
+                    backgroundColor: 'rgba(249, 115, 22, 0.5)', // Orange
                     borderColor: 'rgb(249, 115, 22)',
+                    borderWidth: 1,
+                    stack: 'Stack 0',
+                },
+                {
+                    label: '열처리비 (Heat Treat)',
+                    data: htData,
+                    backgroundColor: 'rgba(239, 68, 68, 0.5)', // Red
+                    borderColor: 'rgb(239, 68, 68)',
                     borderWidth: 1,
                     stack: 'Stack 0',
                 }
             ]
         };
-    }, [items, filters.groupBy]);
+    }, [filteredItems, filters.groupBy]);
 
     const toggleAll = () => {
-        if (selectedItemIds.size === items.length) setSelectedItemIds(new Set());
-        else setSelectedItemIds(new Set(items.map(i => i.id)));
+        if (selectedItemIds.size === filteredItems.length) setSelectedItemIds(new Set());
+        else setSelectedItemIds(new Set(filteredItems.map(i => i.id)));
     };
 
     const toggleSelection = (id: string) => {
@@ -238,15 +305,16 @@ export function ExpenseAnalysis() {
     return (
         <div className="h-full flex flex-col bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-                <PageHeader title="💰 지출/원가 예상 (Expense Analysis)" description="견적 원가를 기반으로 한 예상 지출 내역입니다." />
+                <PageHeader title="💰 지출/원가 분석 (Expense Analysis)" description="자재, 후처리, 열처리 등 항목별 원가 지출을 분석합니다." />
 
                 {/* Filters */}
                 <Section>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-4">
+                        {/* Top Line: Period / Client / GroupBy */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                             {/* Period */}
                             <div className="md:col-span-2 space-y-2">
-                                <label className="block text-sm font-bold text-slate-700">📅 조회 기간 (Period)</label>
+                                <label className="block text-sm font-bold text-slate-700">📅 조회 기간</label>
                                 <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
                                     <input
                                         type="date"
@@ -266,7 +334,7 @@ export function ExpenseAnalysis() {
 
                             {/* Client */}
                             <div className="space-y-2">
-                                <label className="block text-sm font-bold text-slate-700">🏢 거래처 (Client)</label>
+                                <label className="block text-sm font-bold text-slate-700">🏢 거래처</label>
                                 <select
                                     className="w-full border-slate-200 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-slate-50 p-2.5 font-medium outline-none border"
                                     value={filters.clientId}
@@ -279,7 +347,7 @@ export function ExpenseAnalysis() {
 
                             {/* Group By */}
                             <div className="space-y-2">
-                                <label className="block text-sm font-bold text-slate-700">📊 보기 방식 (View Mode)</label>
+                                <label className="block text-sm font-bold text-slate-700">📊 보기 방식</label>
                                 <div className="flex bg-slate-100 rounded-lg p-1">
                                     {[
                                         { id: 'list', label: '목록' },
@@ -301,30 +369,59 @@ export function ExpenseAnalysis() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Bottom Line: Multi-Select Filters */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
+                            <MultiSelect
+                                label="🧱 소재 (Material)"
+                                options={filterOptions.materials}
+                                selectedValues={selectedMaterials}
+                                onChange={setSelectedMaterials}
+                                placeholder="전체 소재"
+                            />
+                            <MultiSelect
+                                label="✨ 후처리 (Post-Processing)"
+                                options={filterOptions.postProcessings}
+                                selectedValues={selectedPostProcessings}
+                                onChange={setSelectedPostProcessings}
+                                placeholder="전체 후처리"
+                            />
+                            <MultiSelect
+                                label="🔥 열처리 (Heat-Treatment)"
+                                options={filterOptions.heatTreatments}
+                                selectedValues={selectedHeatTreatments}
+                                onChange={setSelectedHeatTreatments}
+                                placeholder="전체 열처리"
+                            />
+                        </div>
                     </div>
                 </Section>
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className="p-4 border-l-4 border-blue-500">
-                        <h4 className="text-xs font-bold text-slate-500 mb-1">총 예상 소재비 (Material)</h4>
-                        <p className="text-2xl font-black text-slate-800">₩ {summaryData.totalMat.toLocaleString()}</p>
+                        <h4 className="text-xs font-bold text-slate-500 mb-1">소재비 합계</h4>
+                        <p className="text-xl font-black text-slate-800">₩ {summaryData.totalMat.toLocaleString()}</p>
                     </Card>
                     <Card className="p-4 border-l-4 border-orange-500">
-                        <h4 className="text-xs font-bold text-slate-500 mb-1">총 예상 후처리비 (Processing)</h4>
-                        <p className="text-2xl font-black text-slate-800">₩ {summaryData.totalPp.toLocaleString()}</p>
+                        <h4 className="text-xs font-bold text-slate-500 mb-1">후처리비 합계</h4>
+                        <p className="text-xl font-black text-slate-800">₩ {summaryData.totalPp.toLocaleString()}</p>
+                    </Card>
+                    <Card className="p-4 border-l-4 border-red-500">
+                        <h4 className="text-xs font-bold text-slate-500 mb-1">열처리비 합계</h4>
+                        <p className="text-xl font-black text-slate-800">₩ {summaryData.totalHt.toLocaleString()}</p>
                     </Card>
                     <Card className="p-4 border-l-4 border-indigo-500">
                         <h4 className="text-xs font-bold text-slate-500 mb-1">
-                            {selectedItemIds.size > 0 ? `선택 합계 (${selectedItemIds.size}건)` : '총 예상 지출 합계'}
+                            {selectedItemIds.size > 0 ? `선택 합계 (${selectedItemIds.size}건)` : '총 지출 합계'}
                         </h4>
                         <p className="text-2xl font-black text-indigo-600">₩ {summaryData.totalExp.toLocaleString()}</p>
                     </Card>
                 </div>
 
                 {/* Chart Section */}
-                {items.length > 0 && filters.groupBy !== 'list' && (
-                    <Section title="지출 추이">
+                {filteredItems.length > 0 && filters.groupBy !== 'list' && (
+                    <Section title="지출 추이 (기간별)">
                         <Card className="h-[300px]">
                             <Bar
                                 data={chartData}
@@ -339,59 +436,69 @@ export function ExpenseAnalysis() {
                 )}
 
                 {/* Data Table */}
-                <Section title={`상세 내역 (${items.length}건)`}>
+                <Section title={`상세 내역 (${filteredItems.length}건)`}>
                     <Card noPadding className="overflow-hidden min-h-[300px]">
-                        <table className="min-w-full divide-y divide-slate-200">
-                            <thead className="bg-slate-50">
-                                <tr>
-                                    <th className="px-4 py-3 text-center w-[40px]"><input type="checkbox" checked={selectedItemIds.size === items.length && items.length > 0} onChange={toggleAll} /></th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">출하일자</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">거래처 / PO</th>
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">품명 / 도번</th>
-                                    <th className="px-4 py-3 text-center text-xs font-bold text-slate-500">수량</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">소재비 (단가)</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">후처리비 (단가)</th>
-                                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">합계 (Total)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200 bg-white">
-                                {loading ? (
-                                    <tr><td colSpan={8} className="text-center py-10 text-slate-400">계산 중...</td></tr>
-                                ) : items.length === 0 ? (
-                                    <tr><td colSpan={8} className="text-center py-10 text-slate-400">데이터가 없습니다.</td></tr>
-                                ) : (
-                                    items.map(item => (
-                                        <tr key={item.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3 text-center"><input type="checkbox" checked={selectedItemIds.has(item.id)} onChange={() => toggleSelection(item.id)} /></td>
-                                            <td className="px-4 py-3 text-xs text-slate-600">
-                                                {new Date(item.shipmentDate).toLocaleDateString()}
-                                                <div className="text-[10px] text-slate-400">{item.shipmentNo}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs font-bold text-slate-700">
-                                                {item.clientName}
-                                                <div className="text-[10px] font-normal text-slate-500">{item.poNo}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-xs text-slate-700">
-                                                <div className="font-bold">{item.partNo}</div>
-                                                <div className="text-slate-500 truncate max-w-[150px]">{item.partName}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-xs font-bold badge bg-slate-100 rounded">{item.qty}</td>
-                                            <td className="px-4 py-3 text-right text-xs text-blue-600">
-                                                ₩ {item.totalMatCost.toLocaleString()}
-                                                <div className="text-[10px] text-slate-400">(@{item.matUnitCost.toLocaleString()})</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-xs text-orange-600">
-                                                ₩ {item.totalPpCost.toLocaleString()}
-                                                <div className="text-[10px] text-slate-400">(@{item.ppUnitCost.toLocaleString()})</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-xs font-black text-slate-800">
-                                                ₩ {item.totalEstCost.toLocaleString()}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-slate-200">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-center w-[40px]"><input type="checkbox" checked={selectedItemIds.size === filteredItems.length && filteredItems.length > 0} onChange={toggleAll} /></th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">출하일자</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">거래처 / PO</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">품명 / 도번</th>
+                                        <th className="px-4 py-3 text-left text-xs font-bold text-slate-500">상세사양</th>
+                                        <th className="px-4 py-3 text-center text-xs font-bold text-slate-500">수량</th>
+                                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">소재비</th>
+                                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">후처리비</th>
+                                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">열처리비</th>
+                                        <th className="px-4 py-3 text-right text-xs font-bold text-slate-500">합계</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200 bg-white">
+                                    {loading ? (
+                                        <tr><td colSpan={10} className="text-center py-10 text-slate-400">계산 중...</td></tr>
+                                    ) : filteredItems.length === 0 ? (
+                                        <tr><td colSpan={10} className="text-center py-10 text-slate-400">데이터가 없습니다.</td></tr>
+                                    ) : (
+                                        filteredItems.map(item => (
+                                            <tr key={item.id} className="hover:bg-slate-50">
+                                                <td className="px-4 py-3 text-center"><input type="checkbox" checked={selectedItemIds.has(item.id)} onChange={() => toggleSelection(item.id)} /></td>
+                                                <td className="px-4 py-3 text-xs text-slate-600">
+                                                    {new Date(item.shipmentDate).toLocaleDateString()}
+                                                    <div className="text-[10px] text-slate-400">{item.shipmentNo}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                                                    {item.clientName}
+                                                    <div className="text-[10px] font-normal text-slate-500">{item.poNo}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-slate-700">
+                                                    <div className="font-bold">{item.partNo}</div>
+                                                    <div className="text-slate-500 truncate max-w-[150px]">{item.partName}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-[10px] text-slate-500">
+                                                    <div>{item.materialName}</div>
+                                                    <div>{item.postProcessingName !== '없음' && `+ ${item.postProcessingName}`}</div>
+                                                    <div>{item.heatTreatmentName !== '없음' && `+ ${item.heatTreatmentName}`}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-xs font-bold badge bg-slate-100 rounded">{item.qty}</td>
+                                                <td className="px-4 py-3 text-right text-xs text-blue-600">
+                                                    ₩ {item.totalMatCost.toLocaleString()}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-xs text-orange-600">
+                                                    ₩ {item.totalPpCost.toLocaleString()}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-xs text-red-600">
+                                                    ₩ {item.totalHtCost.toLocaleString()}
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-xs font-black text-slate-800">
+                                                    ₩ {item.totalEstCost.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </Card>
                 </Section>
             </div>

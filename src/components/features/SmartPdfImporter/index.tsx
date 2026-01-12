@@ -22,7 +22,11 @@ interface SmartPdfImporterProps {
 type OcrResult = {
   page: number;
   thumbnail: string;
-  text: string;
+  // [Modified] Multi-zone fields
+  part_no: string;
+  part_name: string;
+  material: string;
+  // text: string; // Removed legacy field
   status: 'pending' | 'success' | 'fail';
   skip: boolean;
 };
@@ -61,6 +65,9 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
   // [Phase 4.1] 마스킹 기능 상태
   const [isMaskMode, setIsMaskMode] = useState(false);
   const [masks, setMasks] = useState<{ page: number, x: number, y: number, w: number, h: number }[]>([]);
+
+  // [Phase 5] Multi-Zone OCR
+  const [ocrMode, setOcrMode] = useState<'part_no' | 'part_name' | 'material'>('part_no');
 
   const pdfWrapperRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -147,7 +154,9 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
     const initialResults = Array.from({ length: numPages }, (_, i) => ({
       page: i + 1,
       thumbnail: '',
-      text: '',
+      part_no: '',
+      part_name: '',
+      material: '',
       status: 'pending',
       skip: false
     })) as OcrResult[];
@@ -157,17 +166,28 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
   const changePage = (offset: number) => {
     setPageNumber(prevPage => Math.min(Math.max(prevPage + offset, 1), numPages));
     setSelection({ x: 0, y: 0, w: 0, h: 0 });
+    // [Request] Reset Mode to part_no on page change
+    setOcrMode('part_no');
   };
 
   const jumpToPage = (page: number) => {
     setPageNumber(page);
+    setOcrMode('part_no'); // Also reset here for consistency
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Middle Click (Pan)
     if (e.button === 1) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    // [Request] Right Click (Cycle Mode)
+    if (e.button === 2) {
+      e.preventDefault(); // Prevent context menu
+      setOcrMode(prev => prev === 'part_no' ? 'part_name' : prev === 'part_name' ? 'material' : 'part_no');
       return;
     }
 
@@ -281,18 +301,23 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
         croppedCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
         const dataUrl = croppedCanvas.toDataURL('image/png');
 
-        const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng');
+        const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng+kor'); // Added Korean support
         const cleanText = text.replace(/\n/g, ' ').trim();
 
         setOcrResults(prev => {
           const newResults = [...prev];
-          newResults[pageNumber - 1] = {
-            page: pageNumber,
-            thumbnail: dataUrl,
-            text: cleanText,
-            status: cleanText ? 'success' : 'fail',
-            skip: false
-          };
+          const currentItem = newResults[pageNumber - 1];
+
+          // Update specific field based on current mode
+          if (ocrMode === 'part_no') currentItem.part_no = cleanText;
+          if (ocrMode === 'part_name') currentItem.part_name = cleanText;
+          if (ocrMode === 'material') currentItem.material = cleanText;
+
+          // Always update thumbnail if it's the first capture or replace? 
+          // Let's keep the thumbnail of the last action
+          currentItem.thumbnail = dataUrl;
+          currentItem.status = 'success';
+
           return newResults;
         });
       }
@@ -320,7 +345,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
       const srcDoc = await PDFDocument.load(arrayBuffer);
       const newItems = [];
 
-      const validResults = ocrResults.filter(res => !res.skip && res.text);
+      const validResults = ocrResults.filter(res => !res.skip && res.part_no);
 
       for (const res of validResults) {
         const subDoc = await PDFDocument.create();
@@ -356,7 +381,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
         }
 
         const pdfBytes = await subDoc.save();
-        const safeName = res.text.replace(/[^a-zA-Z0-9가-힣\s-_]/g, '').trim() || `Page${res.page}`;
+        const safeName = (res.part_no || res.part_name || `Page${res.page}`).replace(/[^a-zA-Z0-9가-힣\s-_]/g, '').trim();
         const pdfFileName = `${safeName}.pdf`;
 
         // BlobPart 타입 에러 방지를 위해 any 캐스팅 사용
@@ -367,9 +392,10 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
         const filesToAdd = [pdfFile];
 
         newItems.push({
-          part_no: res.text,
-          part_name: '',
+          part_no: res.part_no,
+          part_name: res.part_name,
           qty: 1,
+          material_spec: res.material, // Assuming 'material' maps to 'material_spec' or requires logic
           files: filesToAdd // PDF 파일만 전달
         });
       }
@@ -401,7 +427,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
       const arrayBuffer = await file.arrayBuffer();
       const srcDoc = await PDFDocument.load(arrayBuffer);
 
-      const validResults = ocrResults.filter(res => !res.skip && res.text);
+      const validResults = ocrResults.filter(res => !res.skip && res.part_no);
       let savedCount = 0;
 
       for (const res of validResults) {
@@ -435,7 +461,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
         }
 
         const pdfBytes = await subDoc.save();
-        const safeName = res.text.replace(/[^a-zA-Z0-9가-힣\s-_]/g, '').trim() || `Page${res.page}`;
+        const safeName = (res.part_no || res.part_name || `Page${res.page}`).replace(/[^a-zA-Z0-9가-힣\s-_]/g, '').trim();
         const pdfFileName = `${safeName}.pdf`;
 
         const result = await (window as any).fileSystem.writeFile(
@@ -461,7 +487,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
     }
   };
 
-  const validCount = ocrResults.filter(r => !r.skip && r.text).length;
+  const validCount = ocrResults.filter(r => !r.skip && r.part_no).length;
 
   return (
     <MobileModal
@@ -516,31 +542,81 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
             </div>
           ) : (
             <>
-              <div className="bg-white p-2 border-b flex justify-between items-center z-10 shadow-sm w-full">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">
-                    Page {pageNumber} / {numPages}
+              <div className="bg-white p-2 border-b flex flex-wrap gap-2 items-center z-10 shadow-sm w-full min-h-[50px]">
+                {/* 1. Page Nav */}
+                <div className="flex items-center gap-1 border-r pr-2">
+                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded min-w-[80px] text-center">
+                    {pageNumber} / {numPages}
                   </span>
-                  <div className="flex gap-1">
-                    <button onClick={() => changePage(-1)} disabled={pageNumber <= 1} className="w-6 h-6 border rounded hover:bg-slate-50 flex items-center justify-center">◀</button>
-                    <button onClick={() => changePage(1)} disabled={pageNumber >= numPages} className="w-6 h-6 border rounded hover:bg-slate-50 flex items-center justify-center">▶</button>
+                  <div className="flex gap-0.5">
+                    <button onClick={() => changePage(-1)} disabled={pageNumber <= 1} className="w-7 h-7 border rounded hover:bg-slate-50 flex items-center justify-center text-slate-600">◀</button>
+                    <button onClick={() => changePage(1)} disabled={pageNumber >= numPages} className="w-7 h-7 border rounded hover:bg-slate-50 flex items-center justify-center text-slate-600">▶</button>
                   </div>
                 </div>
 
+                {/* 2. Tools Group */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-blue-600">
-                    {isProcessing ? '🔄 분석 중...' : isMaskMode ? '🛡️ 마스킹 모드 (드래그하여 가림)' : isPanning ? '✋ 이동 모드' : '🖱️ 도번 영역 드래그'}
-                  </span>
+                  {/* Mask Toggle */}
                   <button
                     onClick={() => setIsMaskMode(!isMaskMode)}
-                    className={`px-2 py-1 text-xs font-bold rounded border ${isMaskMode ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                    className={`px-3 py-1.5 text-xs font-bold rounded border flex items-center gap-1 transition-all ${isMaskMode ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                    title="드래그하여 불필요한 영역(로고, 주석 등)을 가립니다."
                   >
-                    {isMaskMode ? '마스킹 종료' : '🛡️ 마스킹 모드'}
+                    <span>🛡️</span>
+                    <span>마스킹</span>
                   </button>
-                  <div className="h-4 w-[1px] bg-slate-300 mx-1"></div>
-                  <button onClick={() => setScale(s => Math.max(0.1, s - 0.05))} className="px-2 py-0.5 text-xs border rounded hover:bg-slate-50">－</button>
-                  <span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100 * (1 / 0.25))}%</span>
-                  <button onClick={() => setScale(s => Math.min(2.0, s + 0.05))} className="px-2 py-0.5 text-xs border rounded hover:bg-slate-50">＋</button>
+
+                  <div className="h-5 w-[1px] bg-slate-200"></div>
+
+                  {/* OCR Modes */}
+                  <div className="flex bg-slate-100 p-0.5 rounded border">
+                    <button
+                      onClick={() => setOcrMode('part_no')}
+                      className={`px-3 py-1 text-xs rounded font-bold transition-all ${ocrMode === 'part_no' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}
+                    >
+                      도번
+                    </button>
+                    <button
+                      onClick={() => setOcrMode('part_name')}
+                      className={`px-3 py-1 text-xs rounded font-bold transition-all ${ocrMode === 'part_name' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}
+                    >
+                      품명
+                    </button>
+                    <button
+                      onClick={() => setOcrMode('material')}
+                      className={`px-3 py-1 text-xs rounded font-bold transition-all ${ocrMode === 'material' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200'}`}
+                    >
+                      재질
+                    </button>
+                  </div>
+
+                  {/* Status Indicator */}
+                  <span className="text-xs font-bold text-blue-600 ml-2 hidden lg:inline-block">
+                    {isProcessing ? '🔄 분석 중...' : isMaskMode ? '영역을 드래그하여 가림' : `🖱️ ${ocrMode === 'part_no' ? '도번' : ocrMode === 'part_name' ? '품명' : '재질'} 영역 지정`}
+                  </span>
+                </div>
+
+                <div className="flex-1"></div>
+
+                {/* 3. Right Controls */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center border rounded overflow-hidden">
+                    <button onClick={() => setScale(s => Math.max(0.1, s - 0.1))} className="px-2 py-1 hover:bg-slate-50 text-slate-600 text-xs">－</button>
+                    <span className="text-xs font-mono w-10 text-center bg-slate-50 py-1 border-x">{Math.round(scale * 100 * (1 / 0.25))}%</span>
+                    <button onClick={() => setScale(s => Math.min(2.0, s + 0.1))} className="px-2 py-1 hover:bg-slate-50 text-slate-600 text-xs">＋</button>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (confirm('모든 작업을 초기화하고 파일을 닫으시겠습니까?')) {
+                        setFile(null);
+                        setOcrResults([]);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold text-red-500 border border-transparent hover:bg-red-50 rounded transition-colors"
+                  >
+                    초기화
+                  </button>
                 </div>
               </div>
 
@@ -554,6 +630,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
                     }`}
                   style={{ transform: `scale(${scale})` }}
                   onMouseDown={handleMouseDown}
+                  onContextMenu={(e) => e.preventDefault()}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
@@ -604,14 +681,14 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
                         top: selection.y,
                         width: selection.w,
                         height: selection.h,
-                        border: '2px solid red',
-                        backgroundColor: isMaskMode ? 'white' : 'rgba(255, 0, 0, 0.2)',
+                        border: `2px solid ${isMaskMode ? 'red' : ocrMode === 'part_name' ? 'blue' : ocrMode === 'material' ? 'green' : 'red'}`,
+                        backgroundColor: isMaskMode ? 'white' : ocrMode === 'part_name' ? 'rgba(0, 0, 255, 0.2)' : ocrMode === 'material' ? 'rgba(0, 255, 0, 0.2)' : 'rgba(255, 0, 0, 0.2)',
                         boxShadow: isMaskMode ? 'none' : '0 0 0 9999px rgba(0, 0, 0, 0.5)',
                         pointerEvents: 'none',
                         opacity: isMaskMode ? 0.8 : 1
                       }}
                     >
-                      <div className={`absolute -top-6 left-0 text-white text-[10px] px-1 py-0.5 font-bold whitespace-nowrap ${isMaskMode ? 'bg-red-600' : 'bg-red-600'}`}>
+                      <div className={`absolute -top-6 left-0 text-white text-[10px] px-1 py-0.5 font-bold whitespace-nowrap ${isMaskMode ? 'bg-red-600' : ocrMode === 'part_name' ? 'bg-blue-600' : ocrMode === 'material' ? 'bg-green-600' : 'bg-red-600'}`}>
                         {isMaskMode ? '마스킹 영역' : '인식 중...'}
                       </div>
                     </div>
@@ -624,7 +701,7 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
 
         <div className="w-full lg:w-80 bg-white rounded border flex flex-col shrink-0">
           <div className="p-3 border-b bg-slate-50 font-bold text-slate-700 flex justify-between items-center shrink-0">
-            <span>분석 결과 ({ocrResults.filter(r => r.text).length})</span>
+            <span>분석 결과 ({ocrResults.filter(r => r.part_no).length})</span>
             <span className="text-xs font-normal text-slate-400">체크박스로 제외</span>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2">
@@ -654,18 +731,47 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
                       미인식
                     </div>
                   )}
-                  <textarea
-                    value={res.text}
-                    onChange={(e) => {
-                      const newResults = [...ocrResults];
-                      newResults[idx].text = e.target.value;
-                      setOcrResults(newResults);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    disabled={res.skip}
-                    className="flex-1 border p-1.5 rounded text-xs font-bold text-slate-800 resize-none h-12 focus:ring-1 focus:ring-blue-500"
-                    placeholder="드래그하여 인식..."
-                  />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] w-6 text-slate-400">도번</span>
+                      <input
+                        value={res.part_no || ''}
+                        onChange={(e) => {
+                          const newResults = [...ocrResults];
+                          newResults[idx].part_no = e.target.value;
+                          setOcrResults(newResults);
+                        }}
+                        className="flex-1 border p-1 rounded text-xs text-red-700 font-bold focus:border-red-500 outline-none hover:bg-red-50"
+                        placeholder="도번"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] w-6 text-slate-400">품명</span>
+                      <input
+                        value={res.part_name || ''}
+                        onChange={(e) => {
+                          const newResults = [...ocrResults];
+                          newResults[idx].part_name = e.target.value;
+                          setOcrResults(newResults);
+                        }}
+                        className="flex-1 border p-1 rounded text-xs text-blue-700 font-bold focus:border-blue-500 outline-none hover:bg-blue-50"
+                        placeholder="품명"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] w-6 text-slate-400">재질</span>
+                      <input
+                        value={res.material || ''}
+                        onChange={(e) => {
+                          const newResults = [...ocrResults];
+                          newResults[idx].material = e.target.value;
+                          setOcrResults(newResults);
+                        }}
+                        className="flex-1 border p-1 rounded text-xs text-green-700 font-bold focus:border-green-500 outline-none hover:bg-green-50"
+                        placeholder="재질"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}

@@ -38,7 +38,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
   const userRole = profile?.role;
 
   const {
-    loading, clients, materials, companyRootPath, postProcessings,
+    loading, clients, materials, companyRootPath, postProcessings, heatTreatments,
     formData, setFormData,
     items, currentEstimateId,
     isItemModalOpen, setIsItemModalOpen,
@@ -341,6 +341,8 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
               <EstimateTable
                 items={items}
                 materials={materials}
+                postProcessings={postProcessings} // [New]
+                heatTreatments={heatTreatments}   // [New]
                 currency={formData.currency}
                 exchangeRate={formData.exchange_rate}
                 selectedItemIds={selectedItemIds}
@@ -452,6 +454,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         estimateId={currentEstimateId}
         materials={materials}
         postProcessings={postProcessings}
+        heatTreatments={heatTreatments} // [NEW]
         currency={formData.currency}
         exchangeRate={formData.exchange_rate}
         editingItem={editingItem}
@@ -462,6 +465,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         onSaveFiles={saveFilesToStorage}
         onDeleteExistingFile={handleDeleteExistingFile}
         onOpenFile={handleOpenFile}
+        companyInfo={companyInfo}
       />
 
       <FilenameParserModal

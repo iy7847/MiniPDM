@@ -45,6 +45,9 @@ export function Settings() {
     default_note: '',
     label_printer_width: 55, // Default
     label_printer_height: 35, // Default
+    default_margin_w: 5,
+    default_margin_d: 5,
+    default_margin_h: 0,
   });
 
   const [excelPresets, setExcelPresets] = useState<ExcelExportPreset[]>([]);
@@ -99,6 +102,9 @@ export function Settings() {
             default_note: company.default_note || '',
             label_printer_width: company.label_printer_width || 55,
             label_printer_height: company.label_printer_height || 35,
+            default_margin_w: company.default_margin_w !== null ? company.default_margin_w : 5,
+            default_margin_d: company.default_margin_d !== null ? company.default_margin_d : 5,
+            default_margin_h: company.default_margin_h !== null ? company.default_margin_h : 0,
           });
         }
 
@@ -143,6 +149,9 @@ export function Settings() {
           default_note: form.default_note,
           label_printer_width: form.label_printer_width,
           label_printer_height: form.label_printer_height,
+          default_margin_w: form.default_margin_w,
+          default_margin_d: form.default_margin_d,
+          default_margin_h: form.default_margin_h,
           updated_at: new Date().toISOString()
         })
         .eq('id', companyId);
@@ -381,6 +390,37 @@ export function Settings() {
                           value={form.label_printer_height}
                           onChange={(val) => updateForm('label_printer_height', val)}
                           placeholder="35"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Default Material Margins */}
+                  <div className="bg-slate-100 p-4 rounded border border-slate-300 mt-4">
+                    <label className="block text-sm font-bold text-slate-800 mb-2">📐 기본 자재 여유 치수 (Default Material Margins)</label>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">가로 여유 (Width +)</label>
+                        <NumberInput
+                          value={form.default_margin_w}
+                          onChange={(val) => updateForm('default_margin_w', val)}
+                          placeholder="5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">세로 여유 (Depth +)</label>
+                        <NumberInput
+                          value={form.default_margin_d}
+                          onChange={(val) => updateForm('default_margin_d', val)}
+                          placeholder="5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">두께 여유 (Height +)</label>
+                        <NumberInput
+                          value={form.default_margin_h}
+                          onChange={(val) => updateForm('default_margin_h', val)}
+                          placeholder="0"
                         />
                       </div>
                     </div>

@@ -143,6 +143,7 @@ CREATE TABLE public.estimate_items (
     qty INTEGER DEFAULT 1, -- 수량
     unit_price NUMERIC DEFAULT 0, -- 단가
     supply_price NUMERIC DEFAULT 0, -- 공급가 (단가 * 수량)
+    note TEXT, -- [New] 비고
 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -263,5 +264,18 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- [14] 열처리(Heat Treatments) 테이블
+CREATE TABLE IF NOT EXISTS public.heat_treatments (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    company_id UUID REFERENCES public.companies(id) NOT NULL,
+    name TEXT NOT NULL,
+    price_per_kg NUMERIC DEFAULT 0, -- Kg당 단가
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLS
+ALTER TABLE public.heat_treatments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable all for authenticated users" ON public.heat_treatments FOR ALL TO authenticated USING (true);

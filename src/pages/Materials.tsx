@@ -8,12 +8,13 @@ import { Button } from '../components/common/ui/Button';
 import { NumberInput } from '../components/common/NumberInput';
 import { MobileModal } from '../components/common/MobileModal';
 import { FormattedInput } from '../components/common/FormattedInput';
-import { Material, PostProcessing } from '../types/estimate';
+import { Material, PostProcessing, HeatTreatment } from '../types/estimate';
 
 export function Materials() {
-  const [activeTab, setActiveTab] = useState<'materials' | 'post-processings'>('materials');
+  const [activeTab, setActiveTab] = useState<'materials' | 'post-processings' | 'heat-treatments'>('materials');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [postProcessings, setPostProcessings] = useState<PostProcessing[]>([]);
+  const [heatTreatments, setHeatTreatments] = useState<HeatTreatment[]>([]);
   const [loading, setLoading] = useState(true);
   const { profile } = useProfile();
   const [userRole, setUserRole] = useState<string>('member');
@@ -33,9 +34,16 @@ export function Materials() {
     price_per_kg: 0
   });
 
+  // HeatTreatment Form
+  const [htForm, setHtForm] = useState({
+    name: '',
+    price_per_kg: 0
+  });
+
   // Edit States
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [editingPpId, setEditingPpId] = useState<string | null>(null);
+  const [editingHtId, setEditingHtId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserData();
@@ -44,7 +52,8 @@ export function Materials() {
   useEffect(() => {
     if (profile?.company_id) {
       if (activeTab === 'materials') fetchMaterials();
-      else fetchPostProcessings();
+      else if (activeTab === 'post-processings') fetchPostProcessings();
+      else fetchHeatTreatments();
     }
   }, [profile, activeTab]);
 
@@ -78,6 +87,18 @@ export function Materials() {
       .eq('company_id', profile.company_id)
       .order('name', { ascending: true });
     if (!error) setPostProcessings(data || []);
+    setLoading(false);
+  };
+
+  const fetchHeatTreatments = async () => {
+    if (!profile?.company_id) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('heat_treatments')
+      .select('*')
+      .eq('company_id', profile.company_id)
+      .order('name', { ascending: true });
+    if (!error) setHeatTreatments(data || []);
     setLoading(false);
   };
 
@@ -128,6 +149,7 @@ export function Materials() {
       unit_price: m.unit_price
     });
     setEditingPpId(null); // Clear other edit state
+    setEditingHtId(null);
     setShowMobileForm(true); // Open modal for mobile if applicable, or just useful logic
   };
 
@@ -198,6 +220,62 @@ export function Materials() {
     setPostProcessings(postProcessings.filter(p => p.id !== id));
   };
 
+  // --- HeatTreatment Handlers ---
+  const handleHtSave = async () => {
+    if (!profile?.company_id) return alert('로그인이 필요합니다.');
+    if (!htForm.name) return alert('열처리명을 입력해주세요.');
+
+    if (editingHtId) {
+      // Update
+      const { error } = await supabase.from('heat_treatments').update({
+        name: htForm.name,
+        price_per_kg: htForm.price_per_kg
+      }).eq('id', editingHtId);
+
+      if (error) alert(error.message);
+      else {
+        setHeatTreatments(heatTreatments.map(h => h.id === editingHtId ? { ...h, ...htForm } : h));
+        resetHtForm();
+      }
+    } else {
+      // Insert
+      const { data, error } = await supabase.from('heat_treatments').insert([{
+        company_id: profile.company_id,
+        name: htForm.name,
+        price_per_kg: htForm.price_per_kg
+      }]).select();
+
+      if (error) alert(error.message);
+      else {
+        if (data) setHeatTreatments([...heatTreatments, ...data]);
+        resetHtForm();
+      }
+    }
+  };
+
+  const handleHtEdit = (h: HeatTreatment) => {
+    setEditingHtId(h.id);
+    setHtForm({
+      name: h.name,
+      price_per_kg: h.price_per_kg
+    });
+    setEditingMaterialId(null);
+    setEditingPpId(null);
+    setShowMobileForm(true);
+  };
+
+  const resetHtForm = () => {
+    setHtForm({ name: '', price_per_kg: 0 });
+    setEditingHtId(null);
+    setShowMobileForm(false);
+  };
+
+  const handleHtDelete = async (id: string) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    await supabase.from('heat_treatments').delete().eq('id', id);
+    setHeatTreatments(heatTreatments.filter(h => h.id !== id));
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
       <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 space-y-6">
@@ -223,6 +301,15 @@ export function Materials() {
           >
             후처리 관리
           </button>
+          <button
+            onClick={() => setActiveTab('heat-treatments')}
+            className={`flex-1 py-2 text-sm font-bold text-center rounded-md transition-all ${activeTab === 'heat-treatments'
+              ? 'bg-white text-blue-600 shadow-sm border border-slate-200 ring-1 ring-slate-200/50'
+              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+              }`}
+          >
+            열처리 관리
+          </button>
         </div>
 
         {/* Add Button (Mobile) */}
@@ -231,7 +318,7 @@ export function Materials() {
           className="md:hidden w-full mb-4"
           variant="primary"
         >
-          <span>+</span> {activeTab === 'materials' ? '새 원자재 추가' : '새 후처리 추가'}
+          <span>+</span> {activeTab === 'materials' ? '새 원자재 추가' : (activeTab === 'post-processings' ? '새 후처리 추가' : '새 열처리 추가')}
         </Button>
 
         {/* Content Area */}
@@ -399,10 +486,88 @@ export function Materials() {
             </>
           )}
 
+          {/* === TAB 3: HEAT TREATMENTS === */}
+          {activeTab === 'heat-treatments' && (
+            <>
+              {/* List */}
+              <Section title="열처리 목록" className="flex-1 w-full">
+                <Card noPadding>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="p-3 text-xs font-bold text-slate-500 border-b">열처리명</th>
+                          <th className="p-3 text-xs font-bold text-slate-500 border-b text-right">단가 (kg당)</th>
+                          {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && <th className="p-3 border-b w-10"></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loading ? (
+                          <tr><td colSpan={3} className="p-8 text-center text-slate-400">로딩 중...</td></tr>
+                        ) : heatTreatments.length === 0 ? (
+                          <tr><td colSpan={3} className="p-8 text-center text-slate-400">등록된 열처리가 없습니다.</td></tr>
+                        ) : (
+                          heatTreatments.map(h => (
+                            <tr key={h.id} className="border-b hover:bg-slate-50 last:border-0">
+                              <td className="p-3 text-sm font-bold text-slate-700">{h.name}</td>
+                              <td className="p-3 text-sm text-right text-red-600 font-bold">₩{h.price_per_kg.toLocaleString()} / kg</td>
+                              {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
+                                <td className="p-3 text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => handleHtEdit(h)}
+                                      className="h-[28px] opacity-70 hover:opacity-100"
+                                    >
+                                      ✏️
+                                    </Button>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => handleHtDelete(h.id)}
+                                      className="h-[28px] opacity-70 hover:opacity-100"
+                                    >
+                                      🗑️
+                                    </Button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </Section>
+
+              {/* Desktop Side Form */}
+              {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
+                <Section title="새 열처리 등록" className="hidden md:block w-80 shrink-0">
+                  <Card>
+                    <div className="space-y-4">
+                      <div><FormattedInput label="열처리명 (예: 진공열처리)" value={htForm.name} onChange={v => setHtForm({ ...htForm, name: v })} /></div>
+                      <div><NumberInput label="Kg당 단가 (₩)" value={htForm.price_per_kg} onChange={v => setHtForm({ ...htForm, price_per_kg: v })} /></div>
+                      <div className="flex gap-2">
+                        {editingHtId && (
+                          <Button onClick={resetHtForm} variant="ghost" className="flex-1">취소</Button>
+                        )}
+                        <Button onClick={handleHtSave} variant="danger" className="flex-1">
+                          {editingHtId ? '수정하기' : '등록하기'}
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                </Section>
+              )}
+            </>
+          )}
+
         </div>
 
         {/* Mobile Modal Form */}
-        <MobileModal isOpen={showMobileForm} onClose={() => setShowMobileForm(false)} title={activeTab === 'materials' ? '새 원자재 추가' : '새 후처리 추가'}>
+        <MobileModal isOpen={showMobileForm} onClose={() => setShowMobileForm(false)} title={activeTab === 'materials' ? '새 원자재 추가' : (activeTab === 'post-processings' ? '새 후처리 추가' : '새 열처리 추가')}>
           <div className="space-y-4">
             {activeTab === 'materials' ? (
               <>
@@ -430,6 +595,20 @@ export function Materials() {
                   )}
                   <Button onClick={handlePpSave} variant="warning" className="flex-1">
                     {editingPpId ? '수정' : '저장'}
+                  </Button>
+                </div>
+              </>
+            )}
+            {activeTab === 'heat-treatments' && (
+              <>
+                <div><FormattedInput label="열처리명" value={htForm.name} onChange={v => setHtForm({ ...htForm, name: v })} /></div>
+                <div><NumberInput label="Kg당 단가" value={htForm.price_per_kg} onChange={v => setHtForm({ ...htForm, price_per_kg: v })} /></div>
+                <div className="flex gap-2">
+                  {editingHtId && (
+                    <Button onClick={resetHtForm} variant="ghost" className="flex-1">취소</Button>
+                  )}
+                  <Button onClick={handleHtSave} variant="danger" className="flex-1">
+                    {editingHtId ? '수정' : '저장'}
                   </Button>
                 </div>
               </>

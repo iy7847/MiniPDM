@@ -143,6 +143,7 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
           <SidebarButton page="materials" icon="🔩" label="소재 관리" />
           <SidebarButton page="clients" icon="🏢" label="거래처 관리" />
           <SidebarButton page="estimates" icon="💰" label="견적 관리" />
+          <SidebarButton page="estimate-search" icon="🔍" label="견적 검색" /> {/* [New] */}
           <SidebarButton page="orders" icon="📦" label="수주/발주" />
           <SidebarButton page="shipments" icon="🚛" label="출하 관리" />
           <SidebarButton page="expense-analysis" icon="📉" label="지출 분석" />
