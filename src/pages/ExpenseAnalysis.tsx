@@ -106,7 +106,7 @@ export function ExpenseAnalysis() {
                         material_cost,
                         post_process_cost,
                         heat_treatment_cost,
-                        materials(name),
+                        materials(name, code),
                         post_processings(name),
                         heat_treatments(name)
                     )
@@ -140,6 +140,7 @@ export function ExpenseAnalysis() {
 
                 // Extract Names
                 const materialName = estItem?.materials?.name || '미지정';
+                const materialCode = estItem?.materials?.code || 'No Code';
                 const postProcessingName = estItem?.post_processings?.name || '없음';
                 const heatTreatmentName = estItem?.heat_treatments?.name || '없음';
 
@@ -158,6 +159,7 @@ export function ExpenseAnalysis() {
                     htUnitCost,
 
                     materialName,
+                    materialCode,
                     postProcessingName,
                     heatTreatmentName,
 
@@ -179,7 +181,7 @@ export function ExpenseAnalysis() {
         const hts = new Set<string>();
 
         allItems.forEach(item => {
-            if (item.materialName) mats.add(item.materialName);
+            if (item.materialCode) mats.add(item.materialCode);
             if (item.postProcessingName) pps.add(item.postProcessingName);
             if (item.heatTreatmentName) hts.add(item.heatTreatmentName);
         });
@@ -194,7 +196,7 @@ export function ExpenseAnalysis() {
     // Apply Client-Side Filters
     const filteredItems = useMemo(() => {
         return allItems.filter(item => {
-            if (selectedMaterials.length > 0 && !selectedMaterials.includes(item.materialName)) return false;
+            if (selectedMaterials.length > 0 && !selectedMaterials.includes(item.materialCode)) return false;
             if (selectedPostProcessings.length > 0 && !selectedPostProcessings.includes(item.postProcessingName)) return false;
             if (selectedHeatTreatments.length > 0 && !selectedHeatTreatments.includes(item.heatTreatmentName)) return false;
             return true;
@@ -373,7 +375,7 @@ export function ExpenseAnalysis() {
                         {/* Bottom Line: Multi-Select Filters */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
                             <MultiSelect
-                                label="🧱 소재 (Material)"
+                                label="🧱 소재 (Material Code)"
                                 options={filterOptions.materials}
                                 selectedValues={selectedMaterials}
                                 onChange={setSelectedMaterials}
@@ -476,7 +478,7 @@ export function ExpenseAnalysis() {
                                                     <div className="text-slate-500 truncate max-w-[150px]">{item.partName}</div>
                                                 </td>
                                                 <td className="px-4 py-3 text-[10px] text-slate-500">
-                                                    <div>{item.materialName}</div>
+                                                    <div>{item.materialCode}</div>
                                                     <div>{item.postProcessingName !== '없음' && `+ ${item.postProcessingName}`}</div>
                                                     <div>{item.heatTreatmentName !== '없음' && `+ ${item.heatTreatmentName}`}</div>
                                                 </td>

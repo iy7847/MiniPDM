@@ -48,6 +48,10 @@ export function Settings() {
     default_margin_w: 5,
     default_margin_d: 5,
     default_margin_h: 0,
+    default_margin_round_w: 5, // [New]
+    default_margin_round_d: 5, // [New]
+    default_rounding_unit: 1000,
+    default_time_step: 0.1,
   });
 
   const [excelPresets, setExcelPresets] = useState<ExcelExportPreset[]>([]);
@@ -105,6 +109,10 @@ export function Settings() {
             default_margin_w: company.default_margin_w !== null ? company.default_margin_w : 5,
             default_margin_d: company.default_margin_d !== null ? company.default_margin_d : 5,
             default_margin_h: company.default_margin_h !== null ? company.default_margin_h : 0,
+            default_margin_round_w: company.default_margin_round_w !== null ? company.default_margin_round_w : 5, // [New]
+            default_margin_round_d: company.default_margin_round_d !== null ? company.default_margin_round_d : 5, // [New]
+            default_rounding_unit: company.default_rounding_unit || 1000,
+            default_time_step: company.default_time_step || 0.1,
           });
         }
 
@@ -152,6 +160,10 @@ export function Settings() {
           default_margin_w: form.default_margin_w,
           default_margin_d: form.default_margin_d,
           default_margin_h: form.default_margin_h,
+          default_margin_round_w: form.default_margin_round_w, // [New]
+          default_margin_round_d: form.default_margin_round_d, // [New]
+          default_rounding_unit: form.default_rounding_unit,
+          default_time_step: form.default_time_step,
           updated_at: new Date().toISOString()
         })
         .eq('id', companyId);
@@ -395,35 +407,102 @@ export function Settings() {
                     </div>
                   </div>
 
+                  {/* Rounding & Time Step Settings */}
+                  <div className="bg-slate-100 p-4 rounded border border-slate-300 mt-4">
+                    <label className="block text-sm font-bold text-slate-800 mb-2">⚙️ 계산 설정 (Calculation Settings)</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">단가 절사 단위 (Rounding Unit)</label>
+                        <select
+                          className="w-full border p-2 rounded text-sm bg-white"
+                          value={form.default_rounding_unit}
+                          onChange={(e) => updateForm('default_rounding_unit', parseInt(e.target.value))}
+                        >
+                          <option value="1">1원 단위</option>
+                          <option value="10">10원 단위</option>
+                          <option value="100">100원 단위</option>
+                          <option value="1000">1000원 단위</option>
+                          <option value="10000">10000원 단위</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">가공 시간 단위 (Time Step)</label>
+                        <select
+                          className="w-full border p-2 rounded text-sm bg-white"
+                          value={form.default_time_step}
+                          onChange={(e) => updateForm('default_time_step', parseFloat(e.target.value))}
+                        >
+                          <option value="1">1 (Integer)</option>
+                          <option value="0.1">0.1 (1 Decimal)</option>
+                          <option value="0.01">0.01 (2 Decimals)</option>
+                          <option value="0.001">0.001 (3 Decimals)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Default Material Margins */}
                   <div className="bg-slate-100 p-4 rounded border border-slate-300 mt-4">
                     <label className="block text-sm font-bold text-slate-800 mb-2">📐 기본 자재 여유 치수 (Default Material Margins)</label>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">가로 여유 (Width +)</label>
-                        <NumberInput
-                          value={form.default_margin_w}
-                          onChange={(val) => updateForm('default_margin_w', val)}
-                          placeholder="5"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">세로 여유 (Depth +)</label>
-                        <NumberInput
-                          value={form.default_margin_d}
-                          onChange={(val) => updateForm('default_margin_d', val)}
-                          placeholder="5"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">두께 여유 (Height +)</label>
-                        <NumberInput
-                          value={form.default_margin_h}
-                          onChange={(val) => updateForm('default_margin_h', val)}
-                          placeholder="0"
-                        />
+
+                    {/* Plate Margins */}
+                    <div className="mb-4">
+                      <label className="block text-xs font-bold text-blue-600 mb-2 border-b border-slate-300 pb-1">⬛ 사각/판재 (Plate)</label>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">두께 여유 (Height +)</label>
+                          <NumberInput
+                            value={form.default_margin_h}
+                            onChange={(val) => updateForm('default_margin_h', val)}
+                            placeholder="0"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">가로 여유 (Width +)</label>
+                          <NumberInput
+                            value={form.default_margin_w}
+                            onChange={(val) => updateForm('default_margin_w', val)}
+                            placeholder="5"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">세로 여유 (Depth +)</label>
+                          <NumberInput
+                            value={form.default_margin_d}
+                            onChange={(val) => updateForm('default_margin_d', val)}
+                            placeholder="5"
+                          />
+                        </div>
                       </div>
                     </div>
+
+                    {/* Round Margins */}
+                    <div>
+                      <label className="block text-xs font-bold text-green-600 mb-2 border-b border-slate-300 pb-1">⚫ 원형/봉재 (Round Bar)</label>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">지름 여유 (OD +)</label>
+                          <NumberInput
+                            value={form.default_margin_round_w}
+                            onChange={(val) => updateForm('default_margin_round_w', val)}
+                            placeholder="5"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">길이 여유 (L +)</label>
+                          <NumberInput
+                            value={form.default_margin_round_d}
+                            onChange={(val) => updateForm('default_margin_round_d', val)}
+                            placeholder="5"
+                          />
+                        </div>
+                        <div className="opacity-50">
+                          <label className="block text-xs font-bold text-slate-400 mb-1">-</label>
+                          <input disabled className="w-full border p-2 rounded bg-slate-100" />
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               </Card>

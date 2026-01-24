@@ -58,6 +58,11 @@ export interface OrderItem {
   };
 
   post_processing_name?: string; // [Added] Post-processing name
+
+  // [Added] Production Management
+  production_type?: 'INHOUSE' | 'OUTSOURCE'; // Default 'INHOUSE'
+  production_note?: string;
+  completed_at?: string;
 }
 
 export interface OrderForm {

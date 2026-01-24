@@ -219,10 +219,11 @@ export function EstimateItemModal({
           const dMin = itemForm.spec_d * 0.95;
           const dMax = itemForm.spec_d * 1.05;
 
+          // [Fix] Simplified query: exact shape match + range
           let query = supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
-            .or(`shape.eq.${itemForm.shape}, shape.is.null`)
+            .eq('shape', itemForm.shape)
             .gte('spec_w', wMin).lte('spec_w', wMax)
             .gte('spec_d', dMin).lte('spec_d', dMax);
 
@@ -232,18 +233,21 @@ export function EstimateItemModal({
             query = query.gte('spec_h', hMin).lte('spec_h', hMax);
           }
 
-          const { data } = await query.limit(10);
+          const { data, error } = await query.limit(10);
+          if (error) throw error;
           if (data) matchedItems = [...matchedItems, ...data];
         }
 
         // 2. 도번 기반
         if (hasPartNo && itemForm.part_no) {
           const prefix = itemForm.part_no.substring(0, 3);
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('estimate_items')
             .select('*, files(id, file_name, file_type, file_path)')
-            .ilike('part_no', `${prefix}% `)
+            .ilike('part_no', `${prefix}%`)
             .limit(20);
+
+          if (error) throw error;
 
           if (data) {
             const similarPartItems = data.filter(item => {
@@ -272,6 +276,7 @@ export function EstimateItemModal({
   const calcResult = useMemo(() => {
     const material = materials.find(m => m.id === itemForm.material_id);
     let weight = 0;
+    let matCost = 0;
 
     if (material) {
       if (itemForm.shape === 'rect') {
@@ -285,22 +290,19 @@ export function EstimateItemModal({
           weight = (vol * material.density) / 1000000;
         }
       }
+      // [Fix] Calculate Material Cost: Weight * UnitPrice
+      matCost = Math.round(weight * material.unit_price);
     }
 
-    let matCost = 0;
-    let processingCost = itemForm.processing_cost || 0;
+    let processingCost = 0;
     let postProcCost = itemForm.post_process_cost || 0;
-    let heatTreatCost = itemForm.heat_treatment_cost || 0; // [NEW]
+    let heatTreatCost = itemForm.heat_treatment_cost || 0;
 
-    // 1. MatCost
-    if (itemForm.material_cost && itemForm.material_cost > 0) {
-      // use manual
-      matCost = itemForm.material_cost;
-      const hourlyRate = itemForm.hourly_rate || defaultHourlyRate;
-      const processingTime = itemForm.process_time || 0;
-      const factor = DIFFICULTY_FACTOR[itemForm.difficulty] || 1.0;
-      processingCost = Math.round(processingTime * hourlyRate * factor);
-    }
+    // [Fix] Calculate Processing Cost (moved out of conditional)
+    const hourlyRate = itemForm.hourly_rate || defaultHourlyRate;
+    const processingTime = itemForm.process_time || 0;
+    const factor = DIFFICULTY_FACTOR[itemForm.difficulty] || 1.0;
+    processingCost = Math.round(processingTime * hourlyRate * factor);
 
     // 3. Post Processing Cost
     if (itemForm.post_processing_id) {
@@ -310,7 +312,7 @@ export function EstimateItemModal({
       }
     }
 
-    // 4. Heat Treatment Cost [NEW]
+    // 4. Heat Treatment Cost
     if (itemForm.heat_treatment_id) {
       const selectedHT = heatTreatments.find(h => h.id === itemForm.heat_treatment_id);
       if (selectedHT && weight > 0) {
@@ -325,26 +327,20 @@ export function EstimateItemModal({
     const profitAmount = totalCostRaw * (profitRate / 100);
     const calculatedSupplyPrice = Math.ceil((totalCostRaw + profitAmount) / 1000) * 1000;
 
-    // Final check for manual override
-    // If user manually entered unit_price, we use that? No, usually supply_price is key.
-    // The previous logic calculated finalUnitCost based on applicationRate.
-    // Let's stick to the previous pattern but updated.
-
-    const finalUnitCost = calculatedSupplyPrice; // Simply total + profit
+    const finalUnitCost = calculatedSupplyPrice;
 
     return {
       weight: parseFloat(weight.toFixed(2)),
       matCost,
-      procCost: processingCost, // Alias for backward compatibility
+      procCost: processingCost,
       processingCost,
       postProcCost,
       heatTreatCost,
       totalCostRaw,
       calculatedSupplyPrice,
       finalUnitCost,
-      // Restore UI helpers
       profitAmount,
-      baseTotal: totalCostRaw, // approximation
+      baseTotal: totalCostRaw,
       subTotal: calculatedSupplyPrice
     };
   }, [itemForm, materials, postProcessings, heatTreatments, defaultHourlyRate]);
@@ -404,9 +400,20 @@ export function EstimateItemModal({
   const handleSpecChange = (field: 'spec_w' | 'spec_d' | 'spec_h', value: number) => {
     const newItemForm = { ...itemForm, [field]: value };
     // 자동 채우기 - Configurable Margins
-    const marginW = companyInfo?.default_margin_w ?? 5;
-    const marginD = companyInfo?.default_margin_d ?? 5;
-    const marginH = companyInfo?.default_margin_h ?? 0;
+    // [Fix] Distinguish between Plate (Rect) and Round Bar (Round)
+    let marginW = 5;
+    let marginD = 5;
+    let marginH = 0;
+
+    if (itemForm.shape === 'round') {
+      marginW = companyInfo?.default_margin_round_w ?? 5; // Diameter
+      marginD = companyInfo?.default_margin_round_d ?? 5; // Length
+      marginH = 0;
+    } else {
+      marginW = companyInfo?.default_margin_w ?? 5; // Width
+      marginD = companyInfo?.default_margin_d ?? 5; // Depth
+      marginH = companyInfo?.default_margin_h ?? 0; // Thickness
+    }
 
     if (field === 'spec_w') newItemForm.raw_w = value + (value > 0 ? marginW : 0);
     if (field === 'spec_d') newItemForm.raw_d = value + (value > 0 ? marginD : 0);

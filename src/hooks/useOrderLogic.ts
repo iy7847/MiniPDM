@@ -153,17 +153,23 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
 
     const updateOrderField = async (field: string, value: any) => {
         if (!order) return;
+        // Optimistic update first to prevent UI lag/focus loss
+        setOrder(prev => prev ? { ...prev, [field]: value } : null);
+        setEditForm(prev => ({ ...prev, [field]: value }));
+
         const payload: any = { [field]: value, updated_at: new Date().toISOString() };
         if (field === 'delivery_date' && !value) payload[field] = null;
 
-        const { error } = await supabase.from('orders').update(payload).eq('id', order.id);
-        if (error) {
-            console.error('Field Update Error:', error);
-            alert('수정 실패: ' + error.message);
-        } else {
-            // Optimistic update for simple fields
-            setOrder(prev => prev ? { ...prev, [field]: value } : null);
-        }
+        // Background update (fire and forget style with error handling)
+        supabase.from('orders').update(payload).eq('id', order.id).then(({ error }) => {
+            if (error) {
+                console.error('Field Update Error:', error);
+                // Revert or show alert? text inputs are tricky to revert without jarring user.
+                // For now, simple alert is safer than reverting text while typing
+                // alert('저장 중 오류 발생: ' + error.message); 
+                // Consider adding a 'saving...' indicator instead of blocking
+            }
+        });
     };
 
     const handleBatchUpdateDelivery = async (date: string) => {
@@ -223,6 +229,7 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
         // Update DB
         await supabase.from('orders').update({ currency: newCurrency }).eq('id', orderId);
 
+        // Update Items in DB
         await Promise.all(newItems.map(item =>
             supabase.from('order_items').update({
                 currency: newCurrency,
@@ -232,20 +239,18 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
         ));
 
         // Recalc Total
-        const newTotal = newItems.reduce((sum, it) => {
-
-            // ... Rate logic again for total ...
-            // Simplified: Just use supply price if currency matches header, else convert?
-            // Original logic was slightly complex, let's stick to simple sum if same currency
-            // But original logic converted item supply back to KRW if header was KRW?
-            // Actually, the Total Amount stored in Orders table usually follows Header Currency in this app?
-            // Or is it always KRW? Handover says "total_amount NUMERIC".
-            // Let's assume Total Amount should be in Order's Currency.
-            // But the original code had a recursive conversion logic for total.
-            return sum + it.supply_price;
-        }, 0);
-
+        const newTotal = newItems.reduce((sum, it) => sum + it.supply_price, 0);
         await supabase.from('orders').update({ total_amount: newTotal }).eq('id', orderId);
+    };
+
+    const updateOrderItem = async (itemId: string, updates: Partial<OrderItem>) => {
+        const { error } = await supabase.from('order_items').update(updates).eq('id', itemId);
+        if (error) {
+            console.error('Item Update Error:', error);
+            alert('수정 실패: ' + error.message);
+        } else {
+            setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updates } : i));
+        }
     };
 
     const handleDeleteOrder = async () => {
@@ -254,9 +259,15 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
         if (!confirmDelete) return;
 
         try {
+            // 1. Delete Shipments (cascades to shipment_items)
+            const { error: shipError } = await supabase.from('shipments').delete().eq('order_id', order.id);
+            if (shipError) throw shipError;
+
+            // 2. Delete Order Items
             const { error: itemsError } = await supabase.from('order_items').delete().eq('order_id', order.id);
             if (itemsError) throw itemsError;
 
+            // 3. Delete Order
             const { error: orderError } = await supabase.from('orders').delete().eq('id', order.id);
             if (orderError) throw orderError;
 
@@ -290,6 +301,6 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
         // Actions
         fetchOrder, fetchShipments, updateOrderField,
         handleBatchUpdateDelivery, handleBulkCurrencyChange, handleDeleteOrder,
-        toggleSelectItem, toggleSelectAll
+        toggleSelectItem, toggleSelectAll, updateOrderItem
     };
 }

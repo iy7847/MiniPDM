@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { EstimateItem, Material, CURRENCY_SYMBOL, PostProcessing, HeatTreatment } from '../../types/estimate';
 import { Button } from '../common/ui/Button';
+
 
 interface EstimateTableProps {
   items: EstimateItem[];
@@ -15,13 +17,44 @@ interface EstimateTableProps {
   onDeleteItem: (id: string) => void;
   onUpdateItem: (itemId: string, updates: Partial<EstimateItem>) => void;
   canViewMargins?: boolean;
-
+  timeStep?: number; // [New]
 }
+
+// [Optimized Input] prevents re-renders on every keystroke
+const TableCellInput = ({ value, onUpdate, type = 'text', className = '', ...props }: any) => {
+  const [localVal, setLocalVal] = useState(value);
+
+  useEffect(() => { setLocalVal(value); }, [value]);
+
+  const handleChange = (e: any) => setLocalVal(e.target.value);
+  const handleBlur = () => {
+    if (localVal !== value) {
+      if (type === 'number') onUpdate(parseFloat(localVal));
+      else onUpdate(localVal);
+    }
+  };
+  const handleKeyDown = (e: any) => {
+    if (e.key === 'Enter') handleBlur();
+  };
+
+  return (
+    <input
+      type={type}
+      value={localVal || ''}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className={className}
+      {...props}
+    />
+  );
+};
 
 export function EstimateTable({
   items, materials, postProcessings, heatTreatments, currency, exchangeRate,
   selectedItemIds, onToggleSelectAll, onToggleSelectItem, onEditItem, onDeleteItem, onUpdateItem,
   canViewMargins = true,
+  timeStep = 0.1, // [New] Default 0.1
 
 }: EstimateTableProps) {
 
@@ -58,6 +91,7 @@ export function EstimateTable({
                   <th className="px-3 py-3 text-right text-xs tracking-wider">이윤<br />(%)</th>
                 </>
               )}
+              <th className="px-3 py-3 text-center text-xs tracking-wider w-32">비고</th>
               <th className="px-3 py-3 text-right text-xs tracking-wider">단가 (₩)</th>
               <th className="px-3 py-3 text-right text-xs tracking-wider">합계 (₩)</th>
               <th className="px-3 py-3 text-center text-xs tracking-wider w-16">관리</th>
@@ -65,7 +99,7 @@ export function EstimateTable({
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
             {items.length === 0 ? (
-              <tr><td colSpan={canViewMargins ? 13 : 11} className="text-center py-12 text-slate-400">등록된 품목이 없습니다.</td></tr>
+              <tr><td colSpan={canViewMargins ? 14 : 12} className="text-center py-12 text-slate-400">등록된 품목이 없습니다.</td></tr>
             ) : (
               items.map((item, idx) => {
                 const mat = item.material_id ? materials.find(m => m.id === item.material_id) : null;
@@ -150,7 +184,7 @@ export function EstimateTable({
                       <td className="px-2 py-3 whitespace-nowrap text-right w-20">
                         <input
                           type="number"
-                          step="0.1"
+                          step={timeStep}
                           value={item.process_time || 0}
                           onChange={(e) => onUpdateItem(item.id!, { process_time: parseFloat(e.target.value) })}
                           className="w-16 p-1 text-right text-xs border rounded focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 focus:bg-white transition-all"
@@ -169,6 +203,19 @@ export function EstimateTable({
                         />
                       </td>
                     )}
+
+
+
+                    {/* Editable Note - Always Visible */}
+                    <td className="px-2 py-3 whitespace-nowrap text-center">
+                      <TableCellInput
+                        type="text"
+                        value={item.note || ''}
+                        onUpdate={(val: string) => onUpdateItem(item.id!, { note: val })}
+                        className="w-full text-xs p-1 border rounded focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 focus:bg-white transition-all"
+                        placeholder="-"
+                      />
+                    </td>
 
                     <td className="px-3 py-4 whitespace-nowrap text-xs text-right">
                       <div className="font-medium text-slate-700">{item.unit_price.toLocaleString()}</div>

@@ -8,16 +8,20 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
     noPadding?: boolean;
 }
 
-export function Card({ children, className = '', title, actions, noPadding = false, ...props }: CardProps) {
+export function Card({ children, className = '', title, actions, noPadding = false, glass = false, ...props }: CardProps & { glass?: boolean }) {
+    const baseClass = glass
+        ? 'glass rounded-2xl border-white/40'
+        : 'bg-white rounded-2xl shadow-soft border border-slate-100';
+
     return (
-        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${className}`} {...props}>
+        <div className={`${baseClass} overflow-hidden transition-all duration-300 ${className}`} {...props}>
             {(title || actions) && (
-                <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    {title && <h3 className="text-base font-bold text-slate-800">{title}</h3>}
+                <div className={`px-6 py-5 flex justify-between items-center ${glass ? 'border-b border-white/20' : 'border-b border-slate-50 bg-slate-50/30'}`}>
+                    {title && <h3 className="text-lg font-bold text-slate-800 tracking-tight">{title}</h3>}
                     {actions && <div className="flex gap-2">{actions}</div>}
                 </div>
             )}
-            <div className={noPadding ? '' : 'p-5'}>
+            <div className={noPadding ? '' : 'p-6'}>
                 {children}
             </div>
         </div>

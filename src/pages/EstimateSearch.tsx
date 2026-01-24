@@ -6,6 +6,7 @@ import { EstimateItem, AttachedFile, Material, PostProcessing, HeatTreatment } f
 import { useProfile } from '../hooks/useProfile';
 import { useFileHandler } from '../hooks/useFileHandler';
 import { EstimateItemModal } from '../components/estimate/EstimateItemModal';
+import { TabFilter } from '../components/common/ui/TabFilter';
 
 type SearchResultItem = EstimateItem & {
     estimate?: {
@@ -42,7 +43,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
     const { profile } = useProfile();
-    const [loading, setLoading] = useState(false);
+    const [_loading, setLoading] = useState(false);
     const [results, setResults] = useState<SearchResultItem[]>([]);
 
     // File System
@@ -207,118 +208,113 @@ export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?:
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                 <PageHeader title="🔍 견적 이력 검색 (Items Search)" />
 
-                {/* Search Filter Card */}
-                <Card className="p-4 bg-white shadow-sm border border-slate-200">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-
-                        {/* Status Filter */}
-                        <div className="space-y-2">
-                            <label className="block text-sm font-bold text-slate-700">견적 상태</label>
-                            <select
+                {/* Compact Search Filter Card */}
+                <Card className="p-3 bg-white shadow-sm border border-slate-200">
+                    <div className="flex flex-col gap-3">
+                        {/* Row 1: Status Tabs */}
+                        <div>
+                            <TabFilter
+                                options={[
+                                    { label: '전체', value: 'ALL' },
+                                    { label: '📝 작성중', value: 'DRAFT' },
+                                    { label: '✅ 제출완료', value: 'SENT' },
+                                    { label: '🚀 수주확정', value: 'ORDERED' },
+                                ]}
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="w-full border p-2 rounded text-sm font-bold bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none"
-                            >
-                                <option value="ALL">전체 상태</option>
-                                <option value="DRAFT">📝 작성중</option>
-                                <option value="SENT">✅ 제출완료</option>
-                                <option value="ORDERED">🚀 수주확정</option>
-                            </select>
-                        </div>
-
-                        {/* 1. Keyword */}
-                        <div className="space-y-2">
-                            <label className="block text-sm font-bold text-slate-700">품명 / 도번 검색</label>
-                            <input
-                                type="text"
-                                value={keyword}
-                                onChange={(e) => setKeyword(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="검색어 입력..."
+                                onChange={(val) => setStatusFilter(val)}
                             />
                         </div>
 
-                        {/* 3. Note */}
-                        <div className="space-y-2 md:col-span-2">
-                            <label className="block text-sm font-bold text-slate-700">비고 (Note) 검색</label>
-                            <input
-                                type="text"
-                                value={noteKeyword}
-                                onChange={(e) => setNoteKeyword(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full border p-2 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="비고 내용 포함..."
-                            />
+                        {/* Row 2: Keywords & Actions */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            {/* Keywords */}
+                            <div className="flex-1 min-w-[200px]">
+                                <input
+                                    type="text"
+                                    value={keyword}
+                                    onChange={(e) => setKeyword(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                    className="w-full border p-1.5 rounded text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="품명 / 도번 검색..."
+                                />
+                            </div>
+                            <div className="flex-1 min-w-[150px]">
+                                <input
+                                    type="text"
+                                    value={noteKeyword}
+                                    onChange={(e) => setNoteKeyword(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                    className="w-full border p-1.5 rounded text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="비고 내용 검색..."
+                                />
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex items-center gap-1 shrink-0 ml-auto">
+                                <button
+                                    onClick={handleSearch}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-bold flex items-center gap-1"
+                                >
+                                    🔍 검색
+                                </button>
+                                <button
+                                    onClick={handleClear}
+                                    className="px-3 py-1.5 text-slate-500 bg-white border border-slate-300 rounded hover:bg-slate-50 text-xs font-bold"
+                                >
+                                    초기화
+                                </button>
+                            </div>
                         </div>
 
-                        {/* 2. Size Approximate Search */}
-                        <div className="md:col-span-4 bg-slate-50 p-3 rounded border border-slate-200">
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-sm font-bold text-slate-700">📏 규격 유사 검색 (Size & Tolerance)</label>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-xs font-bold text-blue-600">오차범위(±%):</label>
-                                    <input
-                                        type="number"
-                                        value={tolerance}
-                                        onChange={(e) => setTolerance(parseFloat(e.target.value))}
-                                        className="w-16 border p-1 rounded text-right text-xs font-bold focus:ring-blue-500 outline-none"
-                                        min="0" max="100"
-                                    />
-                                    <span className="text-xs text-slate-500">%</span>
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div>
-                                    <span className="text-xs text-slate-500 block mb-1">가로 / 외경 (W)</span>
-                                    <input
-                                        type="number"
-                                        value={sizeW}
-                                        onChange={(e) => setSizeW(e.target.value)}
-                                        className="w-full border p-2 rounded text-right text-sm outline-none focus:border-blue-500"
-                                        placeholder="mm"
-                                    />
-                                </div>
-                                <div>
-                                    <span className="text-xs text-slate-500 block mb-1">세로 / 길이 (D)</span>
-                                    <input
-                                        type="number"
-                                        value={sizeD}
-                                        onChange={(e) => setSizeD(e.target.value)}
-                                        className="w-full border p-2 rounded text-right text-sm outline-none focus:border-blue-500"
-                                        placeholder="mm"
-                                    />
-                                </div>
-                                <div>
-                                    <span className="text-xs text-slate-500 block mb-1">두께 (H)</span>
-                                    <input
-                                        type="number"
-                                        value={sizeH}
-                                        onChange={(e) => setSizeH(e.target.value)}
-                                        className="w-full border p-2 rounded text-right text-sm outline-none focus:border-blue-500"
-                                        placeholder="mm"
-                                    />
-                                </div>
-                            </div>
-                            <p className="text-[10px] text-slate-400 mt-2">
-                                * 입력한 치수 기준 ±{tolerance}% 범위 내의 이력을 검색합니다. 입력하지 않은 항목은 무시됩니다.
-                            </p>
-                        </div>
-                    </div>
+                        {/* Row 2: Compact Size Search */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="font-bold text-slate-600 mr-2">📏 규격 검색:</span>
 
-                    <div className="mt-4 flex justify-end gap-2 border-t pt-4">
-                        <button
-                            onClick={handleClear}
-                            className="px-4 py-2 text-slate-500 bg-white border border-slate-300 rounded hover:bg-slate-50 text-sm font-bold"
-                        >
-                            초기화
-                        </button>
-                        <button
-                            onClick={handleSearch}
-                            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-bold flex items-center gap-2"
-                        >
-                            {loading ? '검색 중...' : '🔍 검색'}
-                        </button>
+                            <div className="flex items-center gap-1 bg-white border rounded px-2 py-0.5">
+                                <span className="text-blue-600 font-bold">오차범위 ±</span>
+                                <input
+                                    type="number"
+                                    value={tolerance}
+                                    onChange={(e) => setTolerance(parseFloat(e.target.value))}
+                                    className="w-8 text-right font-bold outline-none"
+                                    min="0" max="100"
+                                />
+                                <span className="text-slate-400">%</span>
+                            </div>
+
+                            <div className="h-4 w-px bg-slate-300 mx-1"></div>
+
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-500">W</span>
+                                <input
+                                    type="number"
+                                    value={sizeW}
+                                    onChange={(e) => setSizeW(e.target.value)}
+                                    className="w-16 border rounded p-1 text-right bg-white"
+                                    placeholder="mm"
+                                />
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-500">D</span>
+                                <input
+                                    type="number"
+                                    value={sizeD}
+                                    onChange={(e) => setSizeD(e.target.value)}
+                                    className="w-16 border rounded p-1 text-right bg-white"
+                                    placeholder="mm"
+                                />
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-500">H</span>
+                                <input
+                                    type="number"
+                                    value={sizeH}
+                                    onChange={(e) => setSizeH(e.target.value)}
+                                    className="w-16 border rounded p-1 text-right bg-white"
+                                    placeholder="mm"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </Card>
 

@@ -75,48 +75,68 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
     }
   }, []);
 
-  const SidebarButton = ({ page, icon, label }: { page: string, icon: string, label: string }) => (
-    <button
-      onClick={() => onNavigate(page)}
-      className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-4'} py-3 rounded transition-colors duration-200
-        ${currentPage === page ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-      title={isCollapsed ? label : ''}
-    >
-      <span className="text-xl">{icon}</span>
-      {!isCollapsed && <span className="ml-3 text-sm font-medium">{label}</span>}
-    </button>
-  );
+  const SidebarButton = ({ page, icon, label }: { page: string, icon: string, label: string }) => {
+    const isActive = currentPage === page;
+    return (
+      <button
+        onClick={() => onNavigate(page)}
+        className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 mb-1 rounded-xl transition-all duration-300 group relative overflow-hidden
+        ${isActive
+            ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-glow'
+            : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
+        title={isCollapsed ? label : ''}
+      >
+        {/* Active Indicator */}
+        {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-white/20"></div>}
+
+        <span className={`text-xl transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
+
+        {!isCollapsed && (
+          <span className={`ml-3 text-sm font-bold tracking-tight transition-all duration-300 ${isActive ? 'translate-x-1' : ''}`}>
+            {label}
+          </span>
+        )}
+
+        {isActive && !isCollapsed && (
+          <span className="ml-auto text-xs opacity-50">●</span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <>
       {/* 모바일 사이드바 배경 (오버레이) */}
       {!isCollapsed && (
         <div
-          className="fixed inset-0 bg-slate-900/50 z-30 md:hidden"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300"
           onClick={onToggleCollapse}
         />
       )}
 
       <aside
         className={`
-          fixed inset-y-0 left-0 z-40 md:relative md:translate-x-0 transition-transform duration-300 ease-in-out
-          ${isCollapsed ? '-translate-x-full md:translate-x-0 md:w-20' : 'translate-x-0 w-64'}
-          bg-slate-800 text-white flex flex-col shadow-xl shrink-0
+          fixed inset-y-0 left-0 z-40 md:relative md:translate-x-0 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+          ${isCollapsed ? '-translate-x-full md:translate-x-0 md:w-24' : 'translate-x-0 w-72'}
+          glass-dark flex flex-col border-r border-slate-700/50 shrink-0
         `}
       >
         {/* 로고 및 토글 버튼 */}
-        <div className={`flex items-center border-b border-slate-700/50 h-16 shrink-0 transition-all duration-300 ${isCollapsed ? 'justify-center' : 'px-4 justify-between'}`}>
+        <div className={`flex items-center border-b border-white/5 h-20 shrink-0 transition-all duration-300 ${isCollapsed ? 'justify-center' : 'px-6 justify-between'}`}>
           {!isCollapsed && (
             <div
               onClick={onToggleCollapse}
-              className="group flex items-center gap-2 cursor-pointer select-none"
+              className="group flex items-center gap-3 cursor-pointer select-none"
             >
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-sm shadow-lg group-hover:scale-110 transition-transform">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-black text-sm shadow-glow group-hover:scale-110 transition-transform duration-300">
                 M
               </div>
-              <span className="text-xl font-black tracking-tighter text-slate-100 group-hover:text-blue-400 transition-colors">
-                MiniPDM
-              </span>
+              <div className="flex flex-col">
+                <span className="text-xl font-black tracking-tighter text-white group-hover:text-brand-300 transition-colors leading-none">
+                  MiniPDM
+                </span>
+                <span className="text-[9px] font-bold text-slate-500 tracking-[0.2em] uppercase mt-0.5">Premium</span>
+              </div>
             </div>
           )}
 
@@ -125,69 +145,71 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
             className={`
               flex items-center justify-center rounded-xl transition-all duration-300
               ${isCollapsed
-                ? 'w-12 h-12 bg-blue-600 text-white shadow-lg rotate-0'
-                : 'w-8 h-8 text-slate-400 hover:text-white hover:bg-slate-700 -rotate-180'
+                ? 'w-10 h-10 bg-slate-800 text-brand-400 border border-slate-700 hover:border-brand-500 hover:text-white shadow-soft'
+                : 'w-8 h-8 text-slate-500 hover:text-white hover:bg-slate-800/80 -rotate-180'
               }
             `}
             title={isCollapsed ? "펼치기" : "접기"}
           >
-            <span className={isCollapsed ? "text-xl" : "text-base"}>
-              {isCollapsed ? '☰' : '◀'}
-            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={isCollapsed ? 2.5 : 2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
           </button>
         </div>
 
         {/* 네비게이션 메뉴 */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto scrollbar-hide">
+          <div className="px-2 mb-2">
+            {!isCollapsed && <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-2">Menu</p>}
+          </div>
           <SidebarButton page="dashboard" icon="📊" label="대시보드" />
           <SidebarButton page="materials" icon="🔩" label="소재 관리" />
           <SidebarButton page="clients" icon="🏢" label="거래처 관리" />
+          <div className="my-2 border-t border-white/5 mx-2"></div>
           <SidebarButton page="estimates" icon="💰" label="견적 관리" />
-          <SidebarButton page="estimate-search" icon="🔍" label="견적 검색" /> {/* [New] */}
+          <SidebarButton page="estimate-search" icon="🔍" label="견적 검색" />
           <SidebarButton page="orders" icon="📦" label="수주/발주" />
+          <div className="my-2 border-t border-white/5 mx-2"></div>
+          <SidebarButton page="production" icon="🏭" label="생산 관리" />
           <SidebarButton page="shipments" icon="🚛" label="출하 관리" />
           <SidebarButton page="expense-analysis" icon="📉" label="지출 분석" />
+          <div className="mt-8"></div>
           <SidebarButton page="settings" icon="⚙️" label="환경 설정" />
         </nav>
 
 
         {/* 하단 로그아웃 및 사용자 정보 */}
-        <div className="p-4 border-t border-slate-700 shrink-0 space-y-4">
+        <div className="p-5 border-t border-white/5 shrink-0 bg-black/20 backdrop-blur-sm">
           {!isCollapsed && userEmail && (
-            <div className="px-1 py-1 animate-fade-in">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black shadow-lg border border-blue-400/30">
+            <div className="px-1 py-1 mb-4 flex items-center gap-3 animate-fade-in group cursor-default">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-white font-bold shadow-lg border border-slate-600 group-hover:border-brand-500 transition-colors">
                   {userEmail[0].toUpperCase()}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter leading-none mb-1">Status: Online</p>
-                  <p className="text-sm font-black text-slate-100 truncate tracking-tight">{userEmail.split('@')[0]}</p>
-                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
               </div>
-              <div className="bg-slate-700/50 rounded-lg p-2.5 border border-slate-600/50">
-                <p className="text-[11px] text-blue-300 font-bold leading-relaxed">
-                  ✨ 오늘도 멋진 성과 기원합니다! <br />
-                  <span className="text-slate-400 font-medium">{userEmail}</span>
-                </p>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-200 truncate">{userEmail.split('@')[0]}</p>
+                <p className="text-[10px] text-slate-500 font-medium truncate">{userEmail}</p>
               </div>
             </div>
           )}
 
           <button
             onClick={onLogout}
-            className={`w-full flex items-center ${isCollapsed ? 'md:justify-center' : 'justify-center px-4'} py-2.5 text-sm text-slate-300 hover:text-white border border-slate-600 rounded-lg hover:bg-slate-700 transition-all active:scale-95 group shadow-sm mb-4`}
+            className={`w-full flex items-center ${isCollapsed ? 'md:justify-center' : 'justify-center px-4'} py-3 text-sm text-slate-400 hover:text-white border border-slate-700/50 rounded-xl hover:bg-slate-800/80 transition-all active:scale-95 group shadow-sm`}
             title={isCollapsed ? "로그아웃" : ""}
           >
-            <span className="group-hover:translate-x-1 transition-transform">🚪</span>
+            <span className="group-hover:translate-x-0.5 transition-transform text-lg">🚪</span>
             {!isCollapsed && <span className="ml-2 font-bold">로그아웃</span>}
           </button>
 
           {!isCollapsed && (
-            <div className="text-center opacity-30 hover:opacity-100 transition-opacity">
-              <p className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
-                {appVersion || 'v0.0.0'} • © 2025 MiniPDM
+            <div className="text-center mt-4 opacity-40 hover:opacity-80 transition-opacity cursor-pointer">
+              <p className="text-[9px] font-bold tracking-[0.2em] text-slate-500 uppercase">
+                MiniPDM {appVersion || 'v0.0.0'}
               </p>
-              {updateStatus && <p className="text-[9px] text-green-400 font-bold mt-1 animate-pulse">{updateStatus}</p>}
+              {updateStatus && <p className="text-[9px] text-brand-400 font-bold mt-1 animate-pulse">{updateStatus}</p>}
             </div>
           )}
         </div>

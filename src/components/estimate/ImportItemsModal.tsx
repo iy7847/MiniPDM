@@ -181,6 +181,11 @@ export function ImportItemsModal({ isOpen, onClose, onConfirm }: ImportItemsModa
                                                 <option value="drawing_number">도번 (Dwg No)</option>
                                                 <option value="qty">수량 (Qty)</option>
                                                 <option value="unit_price">단가 (Price)</option>
+                                                {/* New Options */}
+                                                <option value="original_material_name">도면재질 (Drawing Mat.)</option>
+                                                <option value="material_text">실제 재질 (Material)</option>
+                                                <option value="post_process_text">후처리 (Post Proc.)</option>
+                                                <option value="heat_treatment_text">열처리 (Heat Treat.)</option>
                                             </select>
                                         </th>
                                     ))}
@@ -215,7 +220,7 @@ export function ImportItemsModal({ isOpen, onClose, onConfirm }: ImportItemsModa
                     <div className="bg-slate-200 p-2 font-bold text-xs text-slate-700">최종 결과 ({previewItems.length}건)</div>
                     <div className="flex-1 overflow-auto p-2">
                         <table className="w-full text-xs text-left">
-                            <thead><tr className="border-b"><th className="p-1">No.</th><th className="p-1">품명</th><th className="p-1">규격</th><th className="p-1">도번</th><th className="p-1">수량</th><th className="p-1">단가</th></tr></thead>
+                            <thead><tr className="border-b"><th className="p-1">No.</th><th className="p-1">품명</th><th className="p-1">규격</th><th className="p-1">도번</th><th className="p-1">수량</th><th className="p-1">단가</th><th className="p-1">도면재질</th><th className="p-1">실제재질</th><th className="p-1">후처리</th><th className="p-1">열처리</th></tr></thead>
                             <tbody>
                                 {previewItems.map((item, i) => (
                                     <tr key={i} className="border-b border-slate-100">
@@ -225,6 +230,10 @@ export function ImportItemsModal({ isOpen, onClose, onConfirm }: ImportItemsModa
                                         <td className="p-1">{item.drawing_number}</td>
                                         <td className="p-1">{item.qty}</td>
                                         <td className="p-1 text-right">{item.unit_price}</td>
+                                        <td className="p-1 text-slate-500">{item.original_material_name}</td>
+                                        <td className="p-1 text-slate-500">{item.material_text}</td>
+                                        <td className="p-1 text-slate-500">{item.post_process_text}</td>
+                                        <td className="p-1 text-slate-500">{item.heat_treatment_text}</td>
                                     </tr>
                                 ))}
                             </tbody>

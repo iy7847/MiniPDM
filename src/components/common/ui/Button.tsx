@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success' | 'warning';
+    variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success' | 'warning' | 'glass' | 'gradient';
     size?: 'sm' | 'md' | 'lg';
     isLoading?: boolean;
     icon?: React.ReactNode;
@@ -17,27 +17,33 @@ export function Button({
     disabled,
     ...props
 }: ButtonProps) {
-    const baseStyles = 'inline-flex items-center justify-center rounded-lg font-bold transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed selection:bg-transparent';
+    const baseStyles = 'inline-flex items-center justify-center rounded-xl font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed selection:bg-transparent shadow-sm hover:-translate-y-0.5 active:translate-y-0';
 
     const variants = {
-        primary: 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 shadow-sm focus:ring-blue-500',
-        secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 border border-slate-200 focus:ring-slate-400',
-        danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 active:scale-95 focus:ring-red-400',
-        ghost: 'bg-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:ring-slate-300',
-        outline: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:scale-95 focus:ring-slate-400',
-        success: 'bg-green-600 text-white hover:bg-green-700 active:scale-95 shadow-sm focus:ring-green-500',
-        warning: 'bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 active:scale-95 focus:ring-orange-400',
+        primary: 'bg-brand-600 text-white hover:bg-brand-700 hover:shadow-glow focus:ring-brand-500 border border-transparent',
+        secondary: 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:ring-slate-400',
+        danger: 'bg-white text-red-600 border border-red-200 hover:bg-red-50 hover:border-red-300 focus:ring-red-400',
+        ghost: 'bg-transparent text-slate-600 hover:text-brand-700 hover:bg-brand-50 focus:ring-brand-300 shadow-none hover:shadow-none hover:translate-y-0',
+        outline: 'bg-transparent text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400',
+        success: 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-lg focus:ring-emerald-500 border border-transparent',
+        warning: 'bg-amber-500 text-white hover:bg-amber-600 hover:shadow-lg focus:ring-amber-400 border border-transparent',
+        // New Premium Variants
+        glass: 'glass text-brand-900 hover:bg-white/80 border-white/40',
+        gradient: 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white hover:from-brand-500 hover:to-indigo-500 hover:shadow-glow border-none',
     };
 
     const sizes = {
         sm: 'px-3 py-1.5 text-xs',
-        md: 'px-4 py-2 text-sm',
-        lg: 'px-6 py-3 text-base',
+        md: 'px-5 py-2.5 text-sm',
+        lg: 'px-6 py-3.5 text-base',
     };
+
+    // Safe variant fallback
+    const variantStyle = variants[variant as keyof typeof variants] || variants.primary;
 
     return (
         <button
-            className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+            className={`${baseStyles} ${variantStyle} ${sizes[size]} ${className}`}
             disabled={isLoading || disabled}
             {...props}
         >

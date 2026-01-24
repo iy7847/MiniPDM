@@ -188,8 +188,8 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
 
                     {/* Group 3: Outputs */}
                     <div className="flex items-center gap-2">
-                      <Button variant="success" size="sm" onClick={handleExcelClick} className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 h-[38px]">
-                        💾 엑셀
+                      <Button variant="success" size="sm" onClick={handleExcelClick} className="bg-emerald-600 hover:bg-emerald-700 text-white h-[38px] shadow-sm border-transparent">
+                        💾 엑셀 저장
                       </Button>
 
                       <Button variant="primary" size="sm" onClick={() => setIsPreviewModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 h-[38px]">
@@ -352,6 +352,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                 onDeleteItem={handleDeleteItem}
                 onUpdateItem={handleUpdateItem}
                 canViewMargins={userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_view_margins}
+                timeStep={companyInfo?.default_time_step || 0.1} // [New]
               />
             </Card>
           </Section>
@@ -497,14 +498,41 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
               if (nums.length >= 3) h = nums[2];
             }
 
+            // [Resolve IDs from Text]
+            const matName = item.material_text?.trim();
+            const processName = item.post_process_text?.trim();
+            const heatName = item.heat_treatment_text?.trim();
+
+            let foundMatId = null;
+            if (matName) {
+              const foundMat = materials.find(m => m.name === matName || m.code === matName);
+              if (foundMat) foundMatId = foundMat.id;
+            }
+
+            let foundProcessId = null;
+            if (processName) {
+              const foundProc = postProcessings.find(p => p.name === processName);
+              if (foundProc) foundProcessId = foundProc.id;
+            }
+
+            let foundHeatId = null;
+            if (heatName) {
+              const foundHeat = heatTreatments.find(h => h.name === heatName);
+              if (foundHeat) foundHeatId = foundHeat.id;
+            }
+
             return {
               part_name: item.part_name || '',
               part_no: item.drawing_number || '',
+              original_material_name: item.original_material_name || '', // [Mapped]
               spec_w: w,
               spec_d: d,
               spec_h: h,
               unit_price: item.unit_price,
               qty: item.qty,
+              material_id: foundMatId, // [Resolved]
+              post_processing_id: foundProcessId, // [Resolved]
+              heat_treatment_id: foundHeatId, // [Resolved]
               files: []
               // Note: 'spec' property is intentionally OMITTED to avoid DB error
             };

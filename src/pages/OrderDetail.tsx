@@ -27,9 +27,10 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
     // 2. File Handler Hook
     const fileHandler = useFileHandler(logic.companyRootPath);
 
-    // 3. Local UI State (Modals)
+    // 3. Local UI State (Modals & Toolbar)
     const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
     const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false);
+    const [batchDate, setBatchDate] = useState(''); // [New] Batch Date State
 
     // Handlers
     const handlePreviewFile = async (file: any) => {
@@ -76,9 +77,9 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                     {/* Toolbar */}
                     <ActionToolbar
                         selectedCount={logic.selectedItemIds.size}
-                        batchDate={''} // State needs to be moved to hook or local
-                        onBatchDateChange={() => { }} // Implement local state if needed
-                        onApplyBatchDate={() => { }}
+                        batchDate={batchDate}
+                        onBatchDateChange={setBatchDate}
+                        onApplyBatchDate={() => logic.handleBatchUpdateDelivery(batchDate)}
                         onToggleSelectAll={logic.toggleSelectAll}
                     />
 
@@ -89,7 +90,9 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                             items={logic.items}
                             selectedIds={logic.selectedItemIds}
                             onToggleSelect={logic.toggleSelectItem}
+                            files={logic.itemFiles}
                             onPreviewFile={handlePreviewFile}
+                            onUpdateItem={logic.updateOrderItem}
                         />
                     </div>
                 </Section>

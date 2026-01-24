@@ -10,6 +10,7 @@ import { Orders } from './Orders';
 import { EstimateDetail } from './EstimateDetail';
 import { OrderDetail } from './OrderDetail';
 import { ShipmentList } from './ShipmentList';
+import { ProductionManagement } from './ProductionManagement'; // [New]
 import { ExpenseAnalysis } from './ExpenseAnalysis';
 import { EstimateSearch } from './EstimateSearch'; // [New]
 import { useState } from 'react';
@@ -52,6 +53,8 @@ export default function Dashboard({ currentPage, onNavigate }: DashboardProps) {
         return <OrderDetail orderId={selectedId} onBack={() => onNavigate('orders')} />;
       case 'shipments':
         return <ShipmentList onNavigate={handleNavigateWithId} />;
+      case 'production':
+        return <ProductionManagement onNavigate={handleNavigateWithId} />;
       case 'expense-analysis':
         return <ExpenseAnalysis />;
       case 'dashboard':

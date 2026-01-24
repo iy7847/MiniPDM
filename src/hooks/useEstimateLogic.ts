@@ -449,14 +449,13 @@ export function useEstimateLogic(estimateId: string | null) {
     const profitAmount = baseTotal * (profitRate / 100);
     const subTotal = baseTotal + profitAmount;
 
-    // 4. Final Unit Price (Apply Discount Rate)
+    // [Rounding Logic] Ceil to Configured Unit (Default 1000)
     const activePolicy = discountPolicy || {};
     const appRate = calculateDiscountRate(activePolicy, newItem.difficulty, newItem.qty);
-
-    // [Rounding Logic] Ceil to 1000 (139,160 => 140,000)
-    // Formula: Math.ceil(price / 1000) * 1000
     const rawUnitPrice = subTotal * (appRate / 100);
-    const finalUnitPrice = Math.ceil(rawUnitPrice / 1000) * 1000;
+
+    const roundingUnit = companyInfo?.default_rounding_unit || 1000;
+    const finalUnitPrice = Math.ceil(rawUnitPrice / roundingUnit) * roundingUnit;
 
     const finalSupplyPrice = finalUnitPrice * newItem.qty;
 

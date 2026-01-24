@@ -5,6 +5,8 @@ import { PageHeader } from '../components/common/ui/PageHeader';
 import { Section } from '../components/common/ui/Section';
 import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
+import { TabFilter } from '../components/common/ui/TabFilter';
+import { Pagination } from '../components/common/ui/Pagination';
 
 export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
   // const [viewMode, setViewMode] = useState<'list' | 'detail'>('list'); // Removed: Handled by Dashboard
@@ -14,11 +16,18 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
   const { profile } = useProfile();
 
   const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
-    status: 'DRAFT',
-    keyword: ''
+    startDate: (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 3);
+      return d.toISOString().split('T')[0];
+    })(),
+    endDate: new Date().toISOString().split('T')[0],
+    status: 'ALL',
+    keyword: '',
+    page: 1,
+    pageSize: 20
   });
+  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
     if (profile?.company_id) fetchEstimates();
@@ -28,21 +37,36 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
     if (!profile?.company_id) return;
 
     setLoading(true);
-    let query = supabase
-      .from('estimates')
-      .select('*, clients!inner(name)')
-      .eq('company_id', profile.company_id)
-      .order('created_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('estimates')
+        .select('*, clients!inner(name)', { count: 'exact' })
+        .eq('company_id', profile.company_id)
+        .order('created_at', { ascending: false });
 
-    if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
-    if (filters.startDate) query = query.gte('created_at', filters.startDate);
-    if (filters.endDate) query = query.lte('created_at', `${filters.endDate}T23:59:59`);
-    if (filters.keyword) query = query.or(`project_name.ilike.%${filters.keyword}%,clients.name.ilike.%${filters.keyword}%`);
+      // Apply Pagination
+      const from = (filters.page - 1) * filters.pageSize;
+      const to = from + filters.pageSize - 1;
+      query = query.range(from, to);
 
-    const { data, error } = await query;
-    if (error) console.error(error);
-    else setEstimates(data || []);
-    setLoading(false);
+      if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
+      if (filters.startDate) query = query.gte('created_at', filters.startDate);
+      if (filters.endDate) query = query.lte('created_at', `${filters.endDate}T23:59:59`);
+      if (filters.keyword) query = query.or(`project_name.ilike.%${filters.keyword}%,clients.name.ilike.%${filters.keyword}%`);
+
+      const { data, error, count } = await query;
+      if (error) {
+        console.error(error);
+        setEstimates([]);
+      } else {
+        setEstimates(data || []);
+        setTotalCount(count || 0);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
 
@@ -104,35 +128,39 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
 
         <Section>
           <Card className="p-4">
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-              <div className="flex gap-2 w-full md:w-auto flex-1">
-                <select
-                  className="border p-2 rounded-lg text-sm font-bold text-slate-700 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-100"
+            <div className="flex flex-col gap-4">
+              <div className="w-full">
+                <TabFilter
+                  options={[
+                    { label: '전체 상태', value: 'ALL' },
+                    { label: '📝 작성중', value: 'DRAFT' },
+                    { label: '✅ 제출완료', value: 'SENT' },
+                    { label: '🚀 수주확정', value: 'ORDERED' },
+                  ]}
                   value={filters.status}
-                  onChange={e => setFilters({ ...filters, status: e.target.value })}
-                >
-                  <option value="ALL">전체 상태</option>
-                  <option value="DRAFT">📝 작성중</option>
-                  <option value="SENT">✅ 제출완료</option>
-                  <option value="ORDERED">🚀 수주확정</option>
-                </select>
-                <input
-                  className="border p-2 rounded-lg text-sm flex-1 md:w-64 min-w-0 outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-400"
-                  placeholder="프로젝트명 / 업체명 검색"
-                  value={filters.keyword}
-                  onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                  onChange={(val) => setFilters({ ...filters, status: val, page: 1 })}
                 />
               </div>
-              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} />
-                <span className="text-slate-400">~</span>
-                <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} />
+              <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="w-full md:w-auto flex-1">
+                  <input
+                    className="w-full border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-400"
+                    placeholder="프로젝트명 / 업체명 검색"
+                    value={filters.keyword}
+                    onChange={e => setFilters({ ...filters, keyword: e.target.value, page: 1 })}
+                  />
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                  <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
+                  <span className="text-slate-400">~</span>
+                  <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
+                </div>
               </div>
             </div>
           </Card>
         </Section>
 
-        <Section title={`견적 목록 (${estimates.length}건)`}>
+        <Section title={`견적 목록 (${totalCount}건)`}>
           <Card noPadding className="overflow-hidden">
             <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
@@ -206,6 +234,16 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
             {/* Mobile List Info */}
             <div className="md:hidden p-4 text-center text-sm text-slate-400 border-b border-slate-100">
               좌우로 스크롤하여 내용을 확인하세요.
+            </div>
+
+            {/* Pagination Component */}
+            <div className="px-6">
+              <Pagination
+                currentPage={filters.page}
+                totalPages={Math.ceil(totalCount / filters.pageSize)}
+                onPageChange={(page) => setFilters({ ...filters, page })}
+                totalCount={totalCount}
+              />
             </div>
           </Card>
 
