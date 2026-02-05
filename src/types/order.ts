@@ -4,11 +4,11 @@ export interface Order {
   id: string;
   company_id: string;
   client_id: string;
-  estimate_id?: string | null; // Linked estimate
+  estimate_id?: string | null; // 연결된 견적 ID
 
-  po_no: string; // Purchase Order Number from Client
-  order_date: string; // ISO String
-  delivery_date: string; // ISO String
+  po_no: string; // 고객사 발주 번호 (PO No)
+  order_date: string; // 수주 일자 (ISO 문자열)
+  delivery_date: string; // 납기 일자 (ISO 문자열)
 
   status: OrderStatus;
   shipping_status?: 'unshipped' | 'partially_shipped' | 'shipped';
@@ -26,11 +26,11 @@ export interface Order {
 export interface OrderItem {
   id: string;
   order_id: string;
-  estimate_item_id?: string | null; // Linked estimate item
+  estimate_item_id?: string | null; // 연결된 견적 품목 ID
 
   part_name: string;
   part_no: string;
-  spec: string; // Combined spec string (e.g. "100x200x10t")
+  spec: string; // 상세 규격 (예: "100x200x10t")
 
   material_name: string;
 
@@ -60,7 +60,7 @@ export interface OrderItem {
   post_processing_name?: string; // [Added] Post-processing name
 
   // [Added] Production Management
-  production_type?: 'INHOUSE' | 'OUTSOURCE'; // Default 'INHOUSE'
+  production_type?: 'INHOUSE' | 'OUTSOURCE'; // 기본값 'INHOUSE' (사내/외주)
   production_note?: string;
   completed_at?: string;
 }

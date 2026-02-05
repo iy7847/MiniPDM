@@ -1,4 +1,6 @@
 import React from 'react';
+import { GuideButton } from '../Guide/GuideButton';
+import { useGuide } from '../../../contexts/GuideContext';
 
 interface PageHeaderProps {
     title: React.ReactNode;
@@ -6,9 +8,12 @@ interface PageHeaderProps {
     actions?: React.ReactNode;
     onBack?: () => void;
     breadcrumbs?: { label: string; onClick?: () => void }[];
+    hideGuide?: boolean;
 }
 
-export function PageHeader({ title, description, actions, onBack, breadcrumbs }: PageHeaderProps) {
+export function PageHeader({ title, description, actions, onBack, breadcrumbs, hideGuide = false }: PageHeaderProps) {
+    const { openGuide } = useGuide();
+
     return (
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
             <div className="flex-1">
@@ -47,11 +52,15 @@ export function PageHeader({ title, description, actions, onBack, breadcrumbs }:
                 {description && <p className="text-sm text-slate-500 font-medium mt-1">{description}</p>}
             </div>
 
-            {actions && (
-                <div className="flex items-center gap-2 flex-wrap">
-                    {actions}
-                </div>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+                {actions}
+                {!hideGuide && (
+                    <GuideButton
+                        onClick={openGuide}
+                        className="shadow-md bg-white hover:bg-slate-50"
+                    />
+                )}
+            </div>
         </div>
     );
 }

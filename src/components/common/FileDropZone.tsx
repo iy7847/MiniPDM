@@ -4,9 +4,10 @@ interface FileDropZoneProps {
   onFilesDropped: (files: File[]) => void;
   className?: string;
   children?: React.ReactNode;
+  hideIcon?: boolean;
 }
 
-export function FileDropZone({ onFilesDropped, className = '', children }: FileDropZoneProps) {
+export function FileDropZone({ onFilesDropped, className = '', children, hideIcon = false }: FileDropZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -42,7 +43,7 @@ export function FileDropZone({ onFilesDropped, className = '', children }: FileD
     >
       {children ? children : (
         <>
-          <div className="text-xl mb-1">📂</div>
+          {!hideIcon && <div className="text-xl mb-1">📂</div>}
           <p className="font-bold text-slate-700 text-sm">여기로 파일을 끌어놓으세요</p>
           <p className="text-[10px] text-slate-500 mt-0.5">
             파일명 분석을 통해 자동으로 품목을 등록합니다. <br />

@@ -4,9 +4,10 @@ interface NumberInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEleme
   value: number | string;
   onChange: (value: number) => void;
   label?: string;
+  labelClassName?: string;
 }
 
-export function NumberInput({ value, onChange, label, className = '', ...props }: NumberInputProps) {
+export function NumberInput({ value, onChange, label, labelClassName = 'block text-xs font-bold text-slate-500 mb-1', className = '', ...props }: NumberInputProps) {
   // [헬퍼] 숫자 문자열에 콤마 찍기 (소수점 유지)
   const formatString = (str: string) => {
     if (!str) return '';
@@ -42,7 +43,7 @@ export function NumberInput({ value, onChange, label, className = '', ...props }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    
+
     // 유효성 검사
     if (!/^[0-9.,-]*$/.test(raw)) return;
 
@@ -66,7 +67,7 @@ export function NumberInput({ value, onChange, label, className = '', ...props }
 
   return (
     <div className="w-full">
-      {label && <label className="block text-xs font-bold text-slate-500 mb-1">{label}</label>}
+      {label && <label className={labelClassName}>{label}</label>}
       <input
         type="text"
         value={displayValue}

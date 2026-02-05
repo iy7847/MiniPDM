@@ -7,11 +7,12 @@ import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { TabFilter } from '../components/common/ui/TabFilter';
 import { Pagination } from '../components/common/ui/Pagination';
+import { Estimate } from '../types/estimate';
 
 export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
-  // const [viewMode, setViewMode] = useState<'list' | 'detail'>('list'); // Removed: Handled by Dashboard
-  // const [selectedId, setSelectedId] = useState<string | null>(null); // Removed: Handled by Dashboard
-  const [estimates, setEstimates] = useState<any[]>([]);
+  // 삭제됨: Dashboard에서 처리
+  // 삭제됨: Dashboard에서 처리
+  const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [loading, setLoading] = useState(true);
   const { profile } = useProfile();
 
@@ -44,7 +45,7 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
         .eq('company_id', profile.company_id)
         .order('created_at', { ascending: false });
 
-      // Apply Pagination
+      // 페이지네이션 적용
       const from = (filters.page - 1) * filters.pageSize;
       const to = from + filters.pageSize - 1;
       query = query.range(from, to);
@@ -81,26 +82,27 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
     if (!confirm('정말 견적서를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
 
     try {
-      // 1. Check for linked orders (Double check)
+      // 1. 연결된 수주 확인 (재확인)
       const { data: orders } = await supabase.from('orders').select('id').eq('estimate_id', id);
       if (orders && orders.length > 0) {
         alert('연결된 수주 내역이 존재하여 삭제할 수 없습니다.');
         return;
       }
 
-      // 2. Delete items (Safety)
+      // 2. 품목 삭제 (안전성)
       await supabase.from('estimate_items').delete().eq('estimate_id', id);
 
-      // 3. Delete estimate
+      // 3. 견적 삭제
       const { error } = await supabase.from('estimates').delete().eq('id', id);
 
       if (error) throw error;
 
       alert('삭제되었습니다.');
       fetchEstimates();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      alert('삭제 실패: ' + err.message);
+      const message = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
+      alert('삭제 실패: ' + message);
     }
   };
 

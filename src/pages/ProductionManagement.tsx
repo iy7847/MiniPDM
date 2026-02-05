@@ -10,19 +10,44 @@ import { useFileHandler } from '../hooks/useFileHandler';
 import { ProductionItemRow } from '../components/production/ProductionItemRow';
 import { Pagination } from '../components/common/ui/Pagination';
 
-// Add this interface or import if it exists centrally
+import { OrderItem } from '../types/order';
+
+export interface ExtendedProductionItem extends Omit<OrderItem, 'estimate_items'> {
+    orders: {
+        id: string;
+        po_no: string;
+        delivery_date: string;
+        client_id: string;
+        clients: { name: string };
+        company_id: string;
+    };
+    estimate_items: {
+        id: string;
+        materials: { name: string } | null;
+        post_processings: { name: string } | null;
+        heat_treatments: { name: string } | null;
+    } | null;
+    shipment_items: { id: string }[];
+    files: {
+        id: string;
+        file_name: string;
+        file_path: string;
+        file_type?: string;
+    }[];
+}
+
 interface ProductionManagementProps {
     onNavigate: (page: string, id?: string | null) => void;
 }
 
 export function ProductionManagement({ onNavigate }: ProductionManagementProps) {
     const { profile } = useProfile();
-    const [items, setItems] = useState<any[]>([]);
+    const [items, setItems] = useState<ExtendedProductionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
     const [companyRootPath, setCompanyRootPath] = useState('');
 
-    // File Handler
+    // 파일 핸들러
     const { openFile } = useFileHandler(companyRootPath);
 
     useEffect(() => {
@@ -30,9 +55,9 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
         if (path) setCompanyRootPath(path);
     }, []);
 
-    // Filter State
-    const [activeTab, setActiveTab] = useState<'ALL' | 'INHOUSE' | 'OUTSOURCE'>('INHOUSE');
-    const [viewStatus, setViewStatus] = useState<'ACTIVE' | 'PROCESSING' | 'DONE'>('ACTIVE');
+    // 필터 상태
+    const [activeTab, setActiveTab] = useState<'ALL' | 'INHOUSE' | 'OUTSOURCE'>('ALL');
+    const [viewStatus, setViewStatus] = useState<'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE'>('ALL');
     const [filters, setFilters] = useState({
         startDate: (() => {
             const d = new Date();
@@ -46,9 +71,9 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
     const [totalCount, setTotalCount] = useState(0);
     const [keyword, setKeyword] = useState('');
 
-    // Modal State
+    // 모달 상태
     const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
-    const [completionTargets, setCompletionTargets] = useState<any[]>([]);
+    const [completionTargets, setCompletionTargets] = useState<ExtendedProductionItem[]>([]);
 
     useEffect(() => {
         if (profile?.company_id) {
@@ -86,14 +111,40 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
 
             if (viewStatus === 'ACTIVE') {
                 query = query.eq('process_status', 'WAITING').order('orders(delivery_date)', { ascending: true });
+                if (filters.startDate) query = query.gte('orders.delivery_date', filters.startDate);
+                // 진행 중이거나 예정된 작업의 경우, 미래 주문이 표시되도록 기본적으로 종료 날짜를 제한하지 않음.
+                // 사용자가 기본값 "오늘"이 아닌 다른 값으로 수동 변경한 경우에만 적용.
+                const today = new Date().toISOString().split('T')[0];
+                if (filters.endDate && filters.endDate !== today) {
+                    query = query.lte('orders.delivery_date', filters.endDate);
+                }
             } else if (viewStatus === 'PROCESSING') {
                 query = query.eq('process_status', 'PROCESSING').order('orders(delivery_date)', { ascending: true });
-            } else {
-                // DONE Tab: Apply Pagination and Date Filtering
+                if (filters.startDate) query = query.gte('orders.delivery_date', filters.startDate);
+
+                const today = new Date().toISOString().split('T')[0];
+                if (filters.endDate && filters.endDate !== today) {
+                    query = query.lte('orders.delivery_date', filters.endDate);
+                }
+            } else if (viewStatus === 'DONE') {
+                // 완료(DONE) 탭: 페이지네이션 및 날짜 필터링 적용
                 query = query.eq('process_status', 'DONE').order('completed_at', { ascending: false });
 
                 if (filters.startDate) query = query.gte('completed_at', filters.startDate);
                 if (filters.endDate) query = query.lte('completed_at', `${filters.endDate}T23:59:59`);
+
+                const from = (filters.page - 1) * filters.pageSize;
+                const to = from + filters.pageSize - 1;
+                query = query.range(from, to);
+            } else {
+                // 전체(ALL) 탭: 페이지네이션과 함께 모든 항목 표시
+                query = query.order('orders(delivery_date)', { ascending: true });
+                if (filters.startDate) query = query.gte('orders.delivery_date', filters.startDate);
+
+                const today = new Date().toISOString().split('T')[0];
+                if (filters.endDate && filters.endDate !== today) {
+                    query = query.lte('orders.delivery_date', filters.endDate);
+                }
 
                 const from = (filters.page - 1) * filters.pageSize;
                 const to = from + filters.pageSize - 1;
@@ -110,8 +161,8 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                 setItems([]);
                 setTotalCount(0);
             } else {
-                // Filter out shipped items (if shipment_items exists and length > 0)
-                const filteredData = (data || []).filter((i: any) => !i.shipment_items || i.shipment_items.length === 0);
+                // 출하된 항목 제외 (shipment_items가 존재하고 길이가 0보다 큰 경우)
+                const filteredData = ((data as unknown as ExtendedProductionItem[]) || []).filter((i) => !i.shipment_items || i.shipment_items.length === 0);
                 setItems(filteredData);
                 setTotalCount(count || 0);
                 setSelectedItemIds(new Set());
@@ -123,7 +174,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
         }
     };
 
-    const openCompleteModal = (itemsToComplete?: any[]) => {
+    const openCompleteModal = (itemsToComplete?: ExtendedProductionItem[]) => {
         const targets = itemsToComplete || items.filter(i => selectedItemIds.has(i.id));
         if (targets.length === 0) return alert('완료 처리할 품목을 선택해주세요.');
 
@@ -153,8 +204,8 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
     };
 
     const handleUndoComplete = async (itemId?: string) => {
-        // If itemId provided, undo single. Else undo selected.
-        let targets = [];
+        // itemId가 제공되면 단일 항목 취소, 아니면 선택된 모든 항목 취소.
+        let targets: ExtendedProductionItem[] = [];
         if (itemId) {
             const item = items.find(i => i.id === itemId);
             if (item) targets = [item];
@@ -206,8 +257,8 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             return;
         }
 
-        // Parent Order Update Logic (Check if needed)
-        // Find distinct orders for these items
+        // 상위 주문 상태 업데이트 로직 (필용 여부 확인)
+        // 이 품목들이 속한 고유 주문 ID 추출
         const targetItems = items.filter(i => ids.includes(i.id));
         const orderIds = Array.from(new Set(targetItems.map(i => i.orders.id)));
 
@@ -223,16 +274,15 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
         fetchItems();
     };
 
-    // Wrapper for batch complete
+    // 일괄 완료 처리를 위한 래퍼 함수
     const handleBatchComplete = () => {
         openCompleteModal();
     };
 
-    // Wrapper for single complete
+    // 단일 완료 처리를 위한 래퍼 함수
     const handleComplete = (itemId: string, _date: string, _note: string) => {
-        // Note: The ProductionItemRow might call this with empty date/note to trigger the modal, 
-        // or if we wanted inline completion we would use date/note.
-        // For consistency with existing logic, let's just open the modal for this single item.
+        // 참고: ProductionItemRow에서 모달을 띄우기 위해 빈 날짜/메모로 호출할 수 있음
+        // 기존 로직과의 일관성을 위해 단일 품목에 대해서도 모달을 엶
         const item = items.find(i => i.id === itemId);
         if (item) openCompleteModal([item]);
     };
@@ -258,24 +308,25 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
         <div className="h-full flex flex-col bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                 <PageHeader
-                    title="🏭 생산 관리 (Production Management)"
+                    title="🏭 생산 관리"
                     description="사내 가공 및 외주 가공 현황을 관리하고 완료 처리합니다."
                 />
 
                 <Section>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Status Tabs */}
+                        {/* 상태 탭 */}
                         <Card className="glass flex items-center p-1" noPadding>
                             <div className="flex flex-1 gap-1">
                                 {[
-                                    { key: 'ACTIVE', label: '🔥 대기 (Waiting)' },
-                                    { key: 'PROCESSING', label: '🚧 진행 (Processing)' },
-                                    { key: 'DONE', label: '✅ 완료 (Done)' },
+                                    { key: 'ALL', label: '📊 전체' },
+                                    { key: 'ACTIVE', label: '🔥 대기' },
+                                    { key: 'PROCESSING', label: '🚧 진행' },
+                                    { key: 'DONE', label: '✅ 완료' },
                                 ].map(tab => (
                                     <button
                                         key={tab.key}
                                         onClick={() => {
-                                            setViewStatus(tab.key as any);
+                                            setViewStatus(tab.key as 'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE');
                                             setFilters({ ...filters, page: 1 });
                                         }}
                                         className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${viewStatus === tab.key
@@ -289,17 +340,17 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                             </div>
                         </Card>
 
-                        {/* Location Tabs */}
+                        {/* 위치 탭 */}
                         <Card className="glass flex items-center p-1" noPadding>
                             <div className="flex flex-1 gap-1">
                                 {[
-                                    { key: 'INHOUSE', label: '🏭 사내 (In-house)' },
-                                    { key: 'OUTSOURCE', label: '🚚 외주 (Outsource)' },
-                                    { key: 'ALL', label: '전체 (All)' },
+                                    { key: 'INHOUSE', label: '🏭 사내' },
+                                    { key: 'OUTSOURCE', label: '🚚 외주' },
+                                    { key: 'ALL', label: '전체' },
                                 ].map(tab => (
                                     <button
                                         key={tab.key}
-                                        onClick={() => setActiveTab(tab.key as any)}
+                                        onClick={() => setActiveTab(tab.key as 'ALL' | 'INHOUSE' | 'OUTSOURCE')}
                                         className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${activeTab === tab.key
                                             ? 'bg-indigo-600 text-white shadow-glow'
                                             : 'text-slate-500 hover:bg-white/50 hover:text-indigo-600'
@@ -323,14 +374,12 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                             onChange={(e) => setKeyword(e.target.value)}
                             className="flex-1 border border-slate-200 p-3 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-brand-200"
                         />
-                        {viewStatus === 'DONE' && (
-                            <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-xl shadow-sm">
-                                <span className="text-xs font-bold text-slate-500 ml-2">완료일:</span>
-                                <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
-                                <span className="text-slate-400">~</span>
-                                <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-xl shadow-sm">
+                            <span className="text-xs font-bold text-slate-500 ml-2">기간:</span>
+                            <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
+                            <span className="text-slate-400">~</span>
+                            <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
+                        </div>
                     </div>
                 </Section>
 
@@ -383,7 +432,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                                         </th>
                                         <th className="px-5 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider w-[120px]">상태</th>
                                         <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-[180px]">업체 / PO</th>
-                                        <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">품목 정보 (Item Info)</th>
+                                        <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">품목 정보</th>
                                         <th className="px-5 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-[120px]">공정</th>
                                         <th className="px-5 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-[100px]">수량</th>
                                         <th className="px-5 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-[120px]">
@@ -418,7 +467,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                             </table>
                         </div>
 
-                        {viewStatus === 'DONE' && totalCount > filters.pageSize && (
+                        {(viewStatus === 'DONE' || viewStatus === 'ALL') && totalCount > filters.pageSize && (
                             <div className="px-6 border-t border-slate-50">
                                 <Pagination
                                     currentPage={filters.page}

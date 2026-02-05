@@ -89,8 +89,8 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
             return;
         }
 
-        // Fix linked estimate data manually if needed (Supabase deep join sometimes tricky)
-        let linkedEstimate: any = null;
+        // 연결된 견적 데이터를 수동으로 수정 (Supabase 심층 조인이 가끔 까다로움)
+        let linkedEstimate: any = null; // 견적 데이터는 별도 타입 정의 필요할 수 있음
         if (orderData.estimate_id) {
             const { data: estimateData } = await supabase
                 .from('estimates')
@@ -147,20 +147,23 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
             .eq('order_id', id)
             .order('created_at', { ascending: false });
 
-        if (error) console.error('Shipment Fetch Error:', error);
-        else setShipments(data as any);
+        if (error) console.error('출하 정보 조회 오류:', error);
+        else setShipments(data as ShipmentWithItems[]);
     };
 
-    const updateOrderField = async (field: string, value: any) => {
+    const updateOrderField = async <K extends keyof Order>(field: K, value: Order[K]) => {
         if (!order) return;
-        // Optimistic update first to prevent UI lag/focus loss
+        // UI 지연 및 포커스 손실을 방지하기 위해 먼저 낙관적 업데이트 수행
         setOrder(prev => prev ? { ...prev, [field]: value } : null);
         setEditForm(prev => ({ ...prev, [field]: value }));
 
-        const payload: any = { [field]: value, updated_at: new Date().toISOString() };
-        if (field === 'delivery_date' && !value) payload[field] = null;
+        const payload: Partial<Order> & { updated_at: string } = {
+            [field]: value,
+            updated_at: new Date().toISOString()
+        } as any;
+        if (field === ('delivery_date' as K) && !value) (payload as any)[field] = null;
 
-        // Background update (fire and forget style with error handling)
+        // 백그라운드 업데이트 (에러 핸들링을 포함한 fire and forget 방식)
         supabase.from('orders').update(payload).eq('id', order.id).then(({ error }) => {
             if (error) {
                 console.error('Field Update Error:', error);

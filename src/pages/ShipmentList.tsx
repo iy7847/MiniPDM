@@ -7,11 +7,35 @@ import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { ShipmentLabelModal } from '../components/features/Shipment/ShipmentLabelModal';
 import { useFileHandler } from '../hooks/useFileHandler';
-import { Pagination } from '../components/common/ui/Pagination';
+import { OrderItem } from '../types/order';
+import { ShipmentWithItems } from '../types/shipment';
+
+// 확장된 OrderItem 타입 (조인된 데이터 포함)
+interface ExtendedOrderItem extends OrderItem {
+    orders: {
+        id: string;
+        po_no: string;
+        delivery_date: string;
+        client_id: string;
+        clients: { name: string };
+        company_id: string;
+    };
+    shipment_items: (ShipmentWithItems['shipment_items'][0] & {
+        shipments: {
+            shipment_no: string;
+            created_at: string;
+        };
+    })[];
+    files: {
+        id: string;
+        file_name: string;
+        file_path: string;
+    }[];
+}
 
 export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
     const { profile } = useProfile();
-    const [items, setItems] = useState<any[]>([]);
+    const [items, setItems] = useState<ExtendedOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -26,7 +50,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
     }, []);
 
     const [filters, setFilters] = useState({
-        status: 'unshipped', // 'unshipped' | 'shipped' | 'all'
+        status: 'unshipped', // '미출하' | '출하 완료' | '전체'
         clientId: '',
         startDate: (() => {
             const d = new Date();
@@ -63,7 +87,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
         setLoading(true);
         try {
-            // Check if we can do more filtering on the server
+            // 서버 측에서 더 많은 필터링을 수행할 수 있는지 확인
             const isShippedTab = filters.status === 'shipped';
 
             let query = supabase
@@ -92,34 +116,40 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 `, { count: 'exact' })
                 .eq('orders.company_id', profile.company_id);
 
-            // Apply Server-side sorting
+            // 서버 측 정렬 적용
             if (isShippedTab) {
                 query = query.order('orders(delivery_date)', { ascending: false });
             } else {
                 query = query.order('orders(delivery_date)', { ascending: true });
             }
 
-            // Client Filter
+            // 거래처 필터
             if (filters.clientId) {
                 query = query.eq('orders.client_id', filters.clientId);
             }
 
-            // Date Filter
+            // 날짜 필터
             if (filters.startDate) query = query.gte('orders.delivery_date', filters.startDate);
-            if (filters.endDate) query = query.lte('orders.delivery_date', filters.endDate);
 
-            // Keyword Filter (Server-side if possible, but let's stick to client-side for complex nested OR if needed)
-            // For PO No search, we can filter orders!inner(po_no)
+            // '미출하' 탭의 경우, 확정된 주문이 표시되도록 기본적으로 미래 날짜를 제한하지 않음.
+            // '미출하' 탭이 아니거나 사용자가 오늘 이후의 종료일을 수동으로 변경한 경우에만 'lte' 적용.
+            const today = new Date().toISOString().split('T')[0];
+            if (filters.endDate && (filters.status !== 'unshipped' || filters.endDate !== today)) {
+                query = query.lte('orders.delivery_date', filters.endDate);
+            }
+
+            // 키워드 필터 (서버 측에서 가능한 경우 수행하지만, 복잡한 중첩 OR의 경우 클라이언트 측에서 처리)
+            // PO No 검색을 위해 orders!inner(po_no) 필터링 가능
             if (filters.keyword) {
                 query = query.or(`part_no.ilike.%${filters.keyword}%,part_name.ilike.%${filters.keyword}%`);
-                // Note: Cross-table OR with po_no is tricky here, keeping it simple.
+                // 참고: po_no와의 교차 테이블 OR은 여기서 까다로우므로 단순하게 유지함.
             }
 
             if (filters.showCompletedOnly) {
                 query = query.eq('process_status', 'DONE');
             }
 
-            // Apply Pagination for Shipped tab (History)
+            // 출하 탭(이력)에 대한 페이지네이션 적용
             if (isShippedTab) {
                 const from = (filters.page - 1) * filters.pageSize;
                 const to = from + filters.pageSize - 1;
@@ -128,16 +158,16 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
             const { data, error, count } = await query;
             if (error) {
-                console.error("Error fetching items:", error);
+                console.error("아이템 조회 오류:", error);
                 setItems([]);
                 setTotalCount(0);
             } else {
-                let processedData = data || [];
+                let processedData = (data as unknown as ExtendedOrderItem[]) || [];
 
-                // Extra client-side filtering for 'unshipped' status to handle partial shipments precisely
+                // 부분 출하를 정확하게 처리하기 위해 '미출하' 상태에 대한 추가 클라이언트 측 필터링
                 if (filters.status === 'unshipped') {
-                    processedData = processedData.filter((i: any) => {
-                        const shipped = i.shipment_items?.reduce((s: number, x: any) => s + x.quantity, 0) || 0;
+                    processedData = processedData.filter((i) => {
+                        const shipped = i.shipment_items?.reduce((s, x) => s + x.quantity, 0) || 0;
                         return shipped < i.qty;
                     });
                 }
@@ -162,19 +192,19 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
             .eq('id', orderId);
 
         if (!error) {
-            // Optimistic update for all items belonging to this order
+            // 이 주문에 속한 모든 품목에 대해 낙관적 업데이트 수행
             setItems(prev => prev.map(i => i.orders.id === orderId ? { ...i, orders: { ...i.orders, delivery_date: newDate } } : i));
         } else {
             alert("납기일 수정 중 오류가 발생했습니다.");
         }
     };
 
-    const handleCompleteShipment = async (item: any, shipmentDate: string) => {
+    const handleCompleteShipment = async (item: ExtendedOrderItem, shipmentDate: string) => {
         if (!confirm(`[${item.part_no}] 품목을 출하 처리하시겠습니까?`)) return;
 
         try {
-            // [Modified] Partial Shipment Logic
-            // Calculate already shipped qty
+            // [수정] 부분 출하 로직
+            // 이미 출하된 수량 계산
             const { data: existingShipments } = await supabase
                 .from('shipment_items')
                 .select('quantity')
@@ -192,10 +222,10 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
             if (isNaN(inputQty) || inputQty <= 0) return alert('유효한 수량을 입력해주세요.');
             if (inputQty > remainingQty) return alert(`남은 수량(${remainingQty})보다 많이 출하할 수 없습니다.`);
 
-            // 1. Create Shipment Record (One shipment per action for now)
+            // 1. 출하 레코드 생성 (현재는 작업당 하나의 출하)
             const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            const shipmentNo = `SH${today}-${random}`; // e.g. SH240104-123
+            const shipmentNo = `SH${today}-${random}`; // 예: SH240104-123
 
             const { data: shipment, error: shipError } = await supabase
                 .from('shipments')
@@ -212,33 +242,33 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
             if (shipError) throw shipError;
 
-            // 2. Create Shipment Item
+            // 2. 출하 품목 생성
             const { error: itemError } = await supabase
                 .from('shipment_items')
                 .insert({
                     company_id: profile?.company_id,
                     shipment_id: shipment.id,
                     order_item_id: item.id,
-                    quantity: inputQty // [Modified] Use input qty
+                    quantity: inputQty // [수정] 입력된 수량 사용
                 });
 
             if (itemError) throw itemError;
 
             alert("출하가 완료되었습니다.");
 
-            // [New] Check if all items in the order are shipped, then update Order Status to DONE
+            // [신규] 주문의 모든 품목이 출하되었는지 확인 후 주문 상태를 'DONE'으로 업데이트
             await checkAndCompleteOrder(item.orders.id);
 
-            fetchItems(); // Refresh
-
-        } catch (e: any) {
+            fetchItems(); // 새로고침
+        } catch (e) {
             console.error(e);
-            alert("출하 처리 중 오류가 발생했습니다: " + e.message);
+            const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
+            alert("출하 처리 중 오류가 발생했습니다: " + message);
         }
     };
 
     const checkAndCompleteOrder = async (orderId: string) => {
-        // 1. Get all items for this order
+        // 1. 이 주문의 모든 품목 가져오기
         const { data: allItems } = await supabase
             .from('order_items')
             .select('id, shipment_items(id)')
@@ -246,10 +276,9 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
         if (!allItems) return;
 
-        // 2. Check if every item is fully shipped
+        // 2. 각 품목이 완전히 출하되었는지 확인
 
-
-        // Refetch with quantity
+        // 수량과 함께 다시 가져오기
         const { data: itemsWithQty } = await supabase
             .from('order_items')
             .select('id, qty, shipment_items(quantity)')
@@ -257,16 +286,16 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
         if (!itemsWithQty) return;
 
-        const fullyShipped = itemsWithQty.every((i: any) => {
-            const shipped = i.shipment_items?.reduce((s: number, x: any) => s + x.quantity, 0) || 0;
+        const fullyShipped = itemsWithQty.every((i: { qty: number; shipment_items: { quantity: number }[] }) => {
+            const shipped = i.shipment_items?.reduce((s, x) => s + x.quantity, 0) || 0;
             return shipped >= i.qty;
         });
 
         if (fullyShipped) {
             await supabase.from('orders').update({ status: 'DONE' }).eq('id', orderId);
-            console.log(`Order ${orderId} marked as DONE`);
+            console.log(`주문 ${orderId}가 완료(DONE)로 표시되었습니다.`);
         } else {
-            // Consider setting back to PRODUCTION if partially shipped?
+            // 부분 출하된 경우 PRODUCTION으로 되돌릴지 검토?
             // await supabase.from('orders').update({ status: 'PRODUCTION' }).eq('id', orderId);
         }
     };
@@ -277,22 +306,22 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
         const { error } = await supabase.from('shipment_items').delete().eq('id', shipmentItemId);
 
         if (!error) {
-            // Check status again (if we cancelled a shipment, the order might need to go back to PRODUCTION)
-            // Since we don't have orderId here, we will rely on fetching items or implement a separate check.
-            // Ideally we should update the order status back to 'PRODUCTION' or similar.
-            // For now, let's just refresh.
+            // 상태 다시 확인 (출하를 취소한 경우 주문이 다시 PRODUCTION으로 돌아가야 할 수도 있음)
+            // 여기서는 orderId가 없으므로 항목을 다시 가져오거나 별도의 확인을 구현해야 함.
+            // 이상적으로는 주문 상태를 다시 'PRODUCTION' 등으로 업데이트해야 함.
+            // 현재는 그냥 새로고침만 수행.
             fetchItems();
         } else {
             alert("취소 실패: " + error.message);
         }
     };
 
-    // [New] Bulk Shipment
+    // [신규] 일괄 출하
     const handleBulkShipment = async () => {
         const selectedIds = Array.from(selectedItemIds);
         if (selectedIds.length === 0) return alert('선택된 품목이 없습니다.');
 
-        // Filter unshipped items
+        // 미출하 품목 필터링
         const targetItems = items.filter(i => selectedIds.includes(i.id) && (!i.shipment_items || i.shipment_items.length === 0));
 
         if (targetItems.length === 0) return alert('선택된 품목 중 출하 가능한(미출하) 품목이 없습니다.');
@@ -304,10 +333,10 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
         setLoading(true);
         try {
-            // Group by Order ID (Since shipments table usually links to order)
-            // If we want to support multi-order shipment, we need to check if order_id is nullable or handle logic differently.
-            // For safety, we group by Order ID.
-            const groups: { [orderId: string]: typeof targetItems } = {};
+            // 주문 ID별로 그룹화 (출하 테이블은 일반적으로 주문과 연결됨)
+            // 다중 주문 출하를 지원하려면 order_id가 nullable인지 확인하거나 로직을 다르게 처리해야 함.
+            // 안전을 위해 주문 ID별로 그룹화함.
+            const groups: { [orderId: string]: ExtendedOrderItem[] } = {};
             targetItems.forEach(item => {
                 const oid = item.orders.id;
                 if (!groups[oid]) groups[oid] = [];
@@ -317,14 +346,14 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
             let processedGroups = 0;
 
-            // Process each group
+            // 각 그룹 처리
             for (const orderId of Object.keys(groups)) {
                 const groupItems = groups[orderId];
                 const clientName = groupItems[0]?.orders?.clients?.name;
 
-                // Create Shipment Header
+                // 출하 헤더 생성
                 const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
-                // Add index and random to avoid collision in loop
+                // 루프 내 충돌을 피하기 위해 인덱스 및 랜덤값 추가
                 const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
                 const shipmentNo = `SH${today}-${random}-${processedGroups + 1}`;
 
@@ -343,12 +372,12 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
                 if (shipError) throw shipError;
 
-                // Create Shipment Items
+                // 출하 품목 생성
                 const shipmentItemsPayload = groupItems.map(item => ({
                     company_id: profile?.company_id,
                     shipment_id: shipment.id,
                     order_item_id: item.id,
-                    quantity: item.qty // Full qty
+                    quantity: item.qty // 전체 수량
                 }));
 
                 const { error: itemsError } = await supabase.from('shipment_items').insert(shipmentItemsPayload);
@@ -357,15 +386,16 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 processedGroups++;
             }
 
-            // Check completion for all affected orders
+            // 영향을 받은 모든 주문의 완료 여부 확인
             await Promise.all(Object.keys(groups).map(oid => checkAndCompleteOrder(oid)));
 
             alert(`일괄 출하 처리가 완료되었습니다. (전표 ${processedGroups}건 생성)`);
             setSelectedItemIds(new Set());
             fetchItems();
-        } catch (e: any) {
+        } catch (e) {
             console.error(e);
-            alert('출하 처리 중 오류가 발생했습니다: ' + e.message);
+            const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
+            alert('출하 처리 중 오류가 발생했습니다: ' + message);
         } finally {
             setLoading(false);
         }
@@ -396,18 +426,18 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
         <div className="h-full flex flex-col bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                 <PageHeader
-                    title="🚛 출하 관리 (Shipment Management)"
+                    title="🚛 출하 관리"
                 />
 
-                {/* Filters */}
+                {/* 필터 */}
                 <Section>
                     <Card className="p-4 space-y-4">
-                        {/* Status Tabs */}
+                        {/* 상태 탭 */}
                         <div className="flex space-x-2 border-b border-transparent pb-2">
                             {[
-                                { key: 'unshipped', label: '미출하 (Unshipped)' },
-                                { key: 'shipped', label: '출하 완료 (Shipped)' },
-                                { key: 'all', label: '전체 (All)' },
+                                { key: 'unshipped', label: '미출하' },
+                                { key: 'shipped', label: '출하 완료' },
+                                { key: 'all', label: '전체' },
                             ].map(tab => (
                                 <button
                                     key={tab.key}
@@ -423,24 +453,24 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                         </div>
 
                         <div className="flex flex-col md:flex-row gap-6 items-end">
-                            {/* Client Filter */}
+                            {/* 거래처 필터 */}
                             <div className="flex flex-col gap-2 w-full md:w-auto">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">거래처 (Client)</span>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">거래처</span>
                                 <select
                                     className="border border-slate-200 p-2.5 rounded-xl text-sm w-full md:w-56 outline-none focus:ring-2 focus:ring-brand-200 bg-slate-50 hover:bg-white transition-colors"
                                     value={filters.clientId}
                                     onChange={e => setFilters({ ...filters, clientId: e.target.value, page: 1 })}
                                 >
-                                    <option value="">전체 (All Clients)</option>
+                                    <option value="">전체 거래처</option>
                                     {clients.map(c => (
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
                                 </select>
                             </div>
 
-                            {/* Date Filter */}
+                            {/* 날짜 필터 */}
                             <div className="flex flex-col gap-2 w-full md:w-auto">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">출하요청일 (Requested Date)</span>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">출하요청일</span>
                                 <div className="flex items-center gap-2">
                                     <input
                                         type="date"
@@ -458,9 +488,9 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                                 </div>
                             </div>
 
-                            {/* Keyword */}
+                            {/* 키워드 */}
                             <div className="flex flex-col gap-2 w-full md:flex-1">
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">검색 (Search)</span>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">검색</span>
                                 <input
                                     className="border border-slate-200 p-2.5 rounded-xl text-sm w-full outline-none focus:ring-2 focus:ring-brand-200 placeholder:text-slate-400 bg-slate-50 focus:bg-white transition-colors"
                                     placeholder="도번 / 품명 / PO 검색"
@@ -469,7 +499,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                                 />
                             </div>
 
-                            {/* Completed Only Checkbox [New] */}
+                            {/* 완료 건만 보기 체크박스 [신규] */}
                             <div className="flex items-center pb-1">
                                 <label className="flex items-center gap-3 cursor-pointer bg-emerald-50/50 hover:bg-emerald-50 px-4 py-3 rounded-xl border border-emerald-100/50 transition-all duration-200 hover:shadow-sm group">
                                     <input
@@ -478,7 +508,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                                         checked={filters.showCompletedOnly}
                                         onChange={e => setFilters({ ...filters, showCompletedOnly: e.target.checked, page: 1 })}
                                     />
-                                    <span className="text-sm font-bold text-emerald-700 group-hover:text-emerald-800">생산 완료 건만 보기 (Ready)</span>
+                                    <span className="text-sm font-bold text-emerald-700 group-hover:text-emerald-800">생산 완료 건만 보기</span>
                                 </label>
                             </div>
                         </div>
@@ -520,7 +550,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                                         <input type="checkbox" onChange={toggleAll} checked={items.length > 0 && selectedItemIds.size === items.length} className="w-5 h-5 rounded text-brand-600 focus:ring-brand-500 border-slate-300 transition-all" />
                                     </th>
                                     <th className="px-5 py-4 text-left text-xs font-black text-slate-500 uppercase tracking-wider w-[15%]">업체 / PO</th>
-                                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-[35%]">품목 정보 (Item Info)</th>
+                                    <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-[35%]">품목 정보</th>
                                     <th className="px-5 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-[10%]">재질/수량</th>
                                     <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-[15%]">출하 요청일</th>
                                     <th className="px-5 py-4 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-[10%]">도면</th>
@@ -574,10 +604,19 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
     );
 }
 
-function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, onComplete, onCancel, onNavigate, onPreviewFile }: any) {
+interface ShipmentItemRowProps {
+    item: ExtendedOrderItem;
+    isSelected: boolean;
+    onToggleSelection: () => void;
+    onUpdateDate: (orderId: string, newDate: string) => void;
+    onComplete: (item: ExtendedOrderItem, shipmentDate: string) => void;
+    onCancel: (shipmentItemId: string) => void;
+    onNavigate: (page: string, id?: string | null) => void;
+    onPreviewFile: (filePath: string) => void;
+}
+
+function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, onComplete, onCancel, onNavigate, onPreviewFile }: ShipmentItemRowProps) {
     const isShipped = item.shipment_items && item.shipment_items.length > 0;
-
-
 
     const [shipmentDate, setShipmentDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -587,7 +626,7 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                 <input type="checkbox" checked={isSelected} onChange={onToggleSelection} className="w-4 h-4 text-indigo-600 rounded" />
             </td>
 
-            {/* 1. Client / PO */}
+            {/* 1. 업체 / PO */}
             <td className="px-6 py-4">
                 <div className="font-bold text-slate-700 text-sm truncate max-w-[150px]" title={item.orders?.clients?.name}>
                     {item.orders?.clients?.name}
@@ -643,7 +682,7 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
             <td className="px-6 py-4 text-center">
                 <div className="flex flex-col gap-1 items-center">
                     {item.files && item.files.length > 0 ? (
-                        item.files.map((f: any) => {
+                        item.files.map((f) => {
                             const ext = f.file_name.split('.').pop()?.toLowerCase();
                             const is2D = ['pdf', 'dwg', 'dxf'].includes(ext);
                             const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(ext);
@@ -668,59 +707,118 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
 
             {/* 5. Action */}
             <td className="px-6 py-4">
-                {/* Shipped History */}
+                {/* 출하 이력 */}
                 {isShipped && (
                     <div className="flex flex-col gap-1 items-end mb-2">
-                        {item.shipment_items.map((si: any) => (
+                        {item.shipment_items.map((si) => (
                             <div key={si.id} className="text-xs text-teal-700 font-bold bg-teal-50 px-2 py-1 rounded border border-teal-100 flex items-center gap-2">
                                 <span>{new Date(si.shipments?.created_at).toLocaleDateString()} : {si.quantity} EA</span>
                                 <button onClick={() => onCancel(si.id)} className="text-red-500 hover:text-red-700">✕</button>
                             </div>
                         ))}
                         <div className="text-xs font-black text-slate-600">
-                            (출하 합계: {item.shipment_items.reduce((s: number, x: any) => s + x.quantity, 0)} / {item.qty})
+                            (출하 합계: {item.shipment_items.reduce((s, x) => s + x.quantity, 0)} / {item.qty})
                         </div>
                     </div>
                 )}
 
-                {/* Shipping Action */}
-                {(item.shipment_items?.reduce((s: number, x: any) => s + x.quantity, 0) || 0) < item.qty ? (
-                    <div className="flex gap-2 items-end justify-end">
-                        <div className="flex flex-col gap-1 items-end">
-                            {item.process_status !== 'DONE' && (
-                                <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded border border-red-100 mb-1">
-                                    ⚠️ 가공 미완료
-                                </span>
-                            )}
-                            <input
-                                type="date"
-                                className="border rounded px-2 py-1 text-sm w-28 border-slate-300"
-                                value={shipmentDate}
-                                onChange={(e) => setShipmentDate(e.target.value)}
-                                disabled={item.process_status !== 'DONE'}
-                            />
-                        </div>
-                        <Button
-                            size="sm"
-                            className={`font-bold h-[30px] whitespace-nowrap ${item.process_status === 'DONE'
-                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                }`}
-                            onClick={() => {
-                                if (item.process_status === 'DONE') onComplete(item, shipmentDate);
-                                else alert('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
-                            }}
-                            disabled={item.process_status !== 'DONE'}
-                        >
-                            출하
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="text-center">
-                        <span className="text-xs font-bold text-slate-400">출하 완료</span>
-                    </div>
+            </div>
                 )}
-            </td>
+
+            {/* 출하 실행 액션 */}
+            {(item.shipment_items?.reduce((s: number, x: { quantity: number }) => s + x.quantity, 0) || 0) < item.qty ? (
+                <div className="flex gap-2 items-end justify-end">
+                    <div className="flex flex-col gap-1 items-end">
+                        {item.process_status !== 'DONE' && (
+                            <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded border border-red-100 mb-1">
+                                ⚠️ 가공 미완료
+                            </span>
+                        )}
+                        <input
+                            type="date"
+                            className="border rounded px-2 py-1 text-sm w-28 border-slate-300"
+                            value={shipmentDate}
+                            onChange={(e) => setShipmentDate(e.target.value)}
+                            disabled={item.process_status !== 'DONE'}
+                        />
+                    </div>
+                    <Button
+                        size="sm"
+                        className={`font-bold h-[30px] whitespace-nowrap ${item.process_status === 'DONE'
+                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                        onClick={() => {
+                            if (item.process_status === 'DONE') onComplete(item, shipmentDate);
+                            else alert('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
+                        }}
+                        disabled={item.process_status !== 'DONE'}
+                    >
+                        출하
+                    </Button>
+                </div>
+            ) : (
+                <div className="text-center">
+                    <span className="text-xs font-bold text-slate-400">출하 완료</span>
+                </div>
+            )}
+        </td>
         </tr >
+    );
+}
+// 페이지네이션 컴포넌트
+function Pagination({ currentPage, totalPages, onPageChange, totalCount }: { currentPage: number, totalPages: number, onPageChange: (page: number) => void, totalCount: number }) {
+    if (totalPages <= 1) return null;
+
+    return (
+        <div className="flex items-center justify-between py-4">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                총 <span className="text-slate-900">{totalCount}</span>개 품목
+            </div>
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-30 transition-colors"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+
+                <div className="flex items-center gap-1 mx-2">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum = currentPage;
+                        if (totalPages <= 5) pageNum = i + 1;
+                        else if (currentPage <= 3) pageNum = i + 1;
+                        else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                        else pageNum = currentPage - 2 + i;
+
+                        return (
+                            <button
+                                key={pageNum}
+                                onClick={() => onPageChange(pageNum)}
+                                className={`w-8 h-8 rounded-lg text-xs font-black transition-all ${currentPage === pageNum
+                                    ? 'bg-slate-900 text-white shadow-md'
+                                    : 'bg-white text-slate-500 border border-slate-200 hover:border-slate-300'
+                                    }`}
+                            >
+                                {pageNum}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <button
+                    onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 disabled:opacity-30 transition-colors"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
     );
 }

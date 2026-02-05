@@ -18,6 +18,47 @@ export type AttachedFile = {
   is_current?: boolean;
 };
 
+export type CompanyInfo = {
+  id: string;
+  name: string;
+  biz_no?: string;
+  owner_name?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  logo_url?: string;
+  root_path?: string;
+  default_exchange_rate?: number;
+  default_hourly_rate?: number;
+  default_time_step?: number;
+  discount_policy_json?: Record<string, number[]>;
+  default_rounding_unit?: number;
+  quotation_template_type?: string;
+  default_payment_terms?: string;
+  default_incoterms?: string;
+  default_delivery_period?: string;
+  default_destination?: string;
+  default_note?: string;
+};
+
+export type EstimateStatus = 'DRAFT' | 'SENT' | 'ORDERED' | 'ARCHIVED';
+
+export type Estimate = {
+  id: string;
+  company_id: string;
+  client_id: string;
+  project_name: string;
+  currency: string;
+  base_exchange_rate: number;
+  total_amount: number;
+  status: EstimateStatus;
+  created_at: string;
+  updated_at: string;
+  clients?: { name: string };
+};
+
+export type DiscountPolicy = Record<string, number[]>;
+
 export type EstimateItem = {
   id?: string;
   estimate_id?: string;

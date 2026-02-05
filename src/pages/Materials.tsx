@@ -20,7 +20,7 @@ export function Materials() {
   const [userRole, setUserRole] = useState<string>('member');
   const [showMobileForm, setShowMobileForm] = useState(false);
 
-  // Material Form
+  // 원자재 양식
   const [form, setForm] = useState({
     name: '',
     code: '',
@@ -28,19 +28,19 @@ export function Materials() {
     unit_price: 0
   });
 
-  // PostProcessing Form
+  // 후처리 양식
   const [ppForm, setPpForm] = useState({
     name: '',
     price_per_kg: 0
   });
 
-  // HeatTreatment Form
+  // 열처리 양식
   const [htForm, setHtForm] = useState({
     name: '',
     price_per_kg: 0
   });
 
-  // Edit States
+  // 편집 상태
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [editingPpId, setEditingPpId] = useState<string | null>(null);
   const [editingHtId, setEditingHtId] = useState<string | null>(null);
@@ -102,13 +102,13 @@ export function Materials() {
     setLoading(false);
   };
 
-  // --- Material Handlers ---
+  // --- 원자재 핸들러 ---
   const handleMaterialSave = async () => {
     if (!profile?.company_id) return alert('로그인이 필요합니다.');
     if (!form.name || !form.code) return alert('이름과 코드를 입력해주세요.');
 
     if (editingMaterialId) {
-      // Update
+      // 수정
       const { error } = await supabase.from('materials').update({
         name: form.name,
         code: form.code,
@@ -122,7 +122,7 @@ export function Materials() {
         resetMaterialForm();
       }
     } else {
-      // Insert
+      // 삽입
       const { data, error } = await supabase.from('materials').insert([{
         company_id: profile.company_id,
         name: form.name,
@@ -148,9 +148,9 @@ export function Materials() {
       density: m.density,
       unit_price: m.unit_price
     });
-    setEditingPpId(null); // Clear other edit state
+    setEditingPpId(null); // 다른 편집 상태 초기화
     setEditingHtId(null);
-    setShowMobileForm(true); // Open modal for mobile if applicable, or just useful logic
+    setShowMobileForm(true); // 모달 열기
   };
 
   const resetMaterialForm = () => {
@@ -165,13 +165,13 @@ export function Materials() {
     setMaterials(materials.filter(m => m.id !== id));
   };
 
-  // --- PostProcessing Handlers ---
+  // --- 후처리 핸들러 ---
   const handlePpSave = async () => {
     if (!profile?.company_id) return alert('로그인이 필요합니다.');
     if (!ppForm.name) return alert('후처리명을 입력해주세요.');
 
     if (editingPpId) {
-      // Update
+      // 수정
       const { error } = await supabase.from('post_processings').update({
         name: ppForm.name,
         price_per_kg: ppForm.price_per_kg
@@ -183,7 +183,7 @@ export function Materials() {
         resetPpForm();
       }
     } else {
-      // Insert
+      // 삽입
       const { data, error } = await supabase.from('post_processings').insert([{
         company_id: profile.company_id,
         name: ppForm.name,
@@ -220,13 +220,13 @@ export function Materials() {
     setPostProcessings(postProcessings.filter(p => p.id !== id));
   };
 
-  // --- HeatTreatment Handlers ---
+  // --- 열처리 핸들러 ---
   const handleHtSave = async () => {
     if (!profile?.company_id) return alert('로그인이 필요합니다.');
     if (!htForm.name) return alert('열처리명을 입력해주세요.');
 
     if (editingHtId) {
-      // Update
+      // 수정
       const { error } = await supabase.from('heat_treatments').update({
         name: htForm.name,
         price_per_kg: htForm.price_per_kg
@@ -238,7 +238,7 @@ export function Materials() {
         resetHtForm();
       }
     } else {
-      // Insert
+      // 삽입
       const { data, error } = await supabase.from('heat_treatments').insert([{
         company_id: profile.company_id,
         name: htForm.name,
@@ -281,7 +281,7 @@ export function Materials() {
       <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 space-y-6">
         <PageHeader title="기초 데이터 관리" />
 
-        {/* Tabs */}
+        {/* 탭 */}
         <div className="flex bg-slate-50 p-1 gap-1 border-b border-slate-200 w-full md:w-96">
           <button
             onClick={() => setActiveTab('materials')}
@@ -312,7 +312,7 @@ export function Materials() {
           </button>
         </div>
 
-        {/* Add Button (Mobile) */}
+        {/* 추가 버튼 (모바일) */}
         <Button
           onClick={() => setShowMobileForm(true)}
           className="md:hidden w-full mb-4"
@@ -321,13 +321,13 @@ export function Materials() {
           <span>+</span> {activeTab === 'materials' ? '새 원자재 추가' : (activeTab === 'post-processings' ? '새 후처리 추가' : '새 열처리 추가')}
         </Button>
 
-        {/* Content Area */}
+        {/* 콘텐츠 영역 */}
         <div className="flex flex-col md:flex-row gap-6 items-start">
 
-          {/* === TAB 1: MATERIALS === */}
+          {/* === 탭 1: 원자재 === */}
           {activeTab === 'materials' && (
             <>
-              {/* List */}
+              {/* 목록 */}
               <Section title="원자재 목록" className="flex-1 w-full">
                 <Card noPadding>
                   <div className="overflow-x-auto">
@@ -408,7 +408,7 @@ export function Materials() {
             </>
           )}
 
-          {/* === TAB 2: POST PROCESSINGS === */}
+          {/* === 탭 2: 후처리 === */}
           {activeTab === 'post-processings' && (
             <>
               {/* List */}
@@ -486,7 +486,7 @@ export function Materials() {
             </>
           )}
 
-          {/* === TAB 3: HEAT TREATMENTS === */}
+          {/* === 탭 3: 열처리 === */}
           {activeTab === 'heat-treatments' && (
             <>
               {/* List */}
@@ -566,7 +566,7 @@ export function Materials() {
 
         </div>
 
-        {/* Mobile Modal Form */}
+        {/* 모바일 모달 폼 */}
         <MobileModal isOpen={showMobileForm} onClose={() => setShowMobileForm(false)} title={activeTab === 'materials' ? '새 원자재 추가' : (activeTab === 'post-processings' ? '새 후처리 추가' : '새 열처리 추가')}>
           <div className="space-y-4">
             {activeTab === 'materials' ? (

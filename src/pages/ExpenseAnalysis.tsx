@@ -31,10 +31,32 @@ ChartJS.register(
     Filler
 );
 
+interface FlattenedExpenseItem {
+    id: string;
+    shipmentDate: string;
+    shipmentNo: string;
+    clientName: string;
+    poNo: string;
+    partName: string;
+    partNo: string;
+    qty: number;
+    matUnitCost: number;
+    ppUnitCost: number;
+    htUnitCost: number;
+    materialName: string;
+    materialCode: string;
+    postProcessingName: string;
+    heatTreatmentName: string;
+    totalMatCost: number;
+    totalPpCost: number;
+    totalHtCost: number;
+    totalEstCost: number;
+}
+
 export function ExpenseAnalysis() {
     const { profile } = useProfile();
     const [loading, setLoading] = useState(true);
-    const [allItems, setAllItems] = useState<any[]>([]); // Raw fetched data
+    const [allItems, setAllItems] = useState<FlattenedExpenseItem[]>([]); // 원본 원천 데이터
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
 
     // Filters
@@ -49,12 +71,12 @@ export function ExpenseAnalysis() {
         groupBy: 'list' as 'list' | 'week' | 'month' | 'quarter' | 'year'
     });
 
-    // Multi-Select Filter State
+    // 다중 선택 필터 상태
     const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
     const [selectedPostProcessings, setSelectedPostProcessings] = useState<string[]>([]);
     const [selectedHeatTreatments, setSelectedHeatTreatments] = useState<string[]>([]);
 
-    // Selection for Checkboxes (Row Selection)
+    // 행 선택 (체크박스)
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
@@ -78,8 +100,8 @@ export function ExpenseAnalysis() {
         if (!profile?.company_id) return;
         setLoading(true);
 
-        // Fetch Shipped Items joined with Orders and Estimates
-        // Logic: shipment_items -> order_items -> estimate_items -> (materials, post_processings, heat_treatments)
+        // 출하 품목 조회 (수주 및 견적 조인)
+        // 로직: shipment_items -> order_items -> estimate_items -> (materials, post_processings, heat_treatments)
         let query = supabase
             .from('shipment_items')
             .select(`
@@ -126,7 +148,7 @@ export function ExpenseAnalysis() {
             console.error(error);
             setAllItems([]);
         } else {
-            // Flatten Data and Calculate Costs
+            // 데이터 평탄화 및 비용 계산
             const flattened = (data || []).map((item: any) => {
                 const estItem = Array.isArray(item.order_items.estimate_items)
                     ? item.order_items.estimate_items[0]
@@ -134,11 +156,11 @@ export function ExpenseAnalysis() {
 
                 const matUnitCost = estItem?.material_cost || 0;
                 const ppUnitCost = estItem?.post_process_cost || 0;
-                const htUnitCost = estItem?.heat_treatment_cost || 0; // Heat Treatment Cost
+                const htUnitCost = estItem?.heat_treatment_cost || 0; // 열처리비
 
                 const qty = item.quantity || 0;
 
-                // Extract Names
+                // 명칭 추출
                 const materialName = estItem?.materials?.name || '미지정';
                 const materialCode = estItem?.materials?.code || 'No Code';
                 const postProcessingName = estItem?.post_processings?.name || '없음';
@@ -174,7 +196,7 @@ export function ExpenseAnalysis() {
         setLoading(false);
     };
 
-    // Extract Filter Options from Data
+    // 데이터에서 필터 옵션 추출
     const filterOptions = useMemo(() => {
         const mats = new Set<string>();
         const pps = new Set<string>();
@@ -193,7 +215,7 @@ export function ExpenseAnalysis() {
         };
     }, [allItems]);
 
-    // Apply Client-Side Filters
+    // 클라이언트 측 필터 적용
     const filteredItems = useMemo(() => {
         return allItems.filter(item => {
             if (selectedMaterials.length > 0 && !selectedMaterials.includes(item.materialCode)) return false;
@@ -203,7 +225,7 @@ export function ExpenseAnalysis() {
         });
     }, [allItems, selectedMaterials, selectedPostProcessings, selectedHeatTreatments]);
 
-    // Calculate Summaries based on Selection or Filtered List
+    // 선택 항목 또는 필터링된 목록을 기반으로 요약 계산
     const summaryData = useMemo(() => {
         const targetItems = selectedItemIds.size > 0
             ? filteredItems.filter(i => selectedItemIds.has(i.id))
@@ -222,7 +244,7 @@ export function ExpenseAnalysis() {
         };
     }, [filteredItems, selectedItemIds]);
 
-    // Grouping Logic for Chart
+    // 차트 그룹화 로직
     const chartData = useMemo(() => {
         const labels: string[] = [];
         const matData: number[] = [];
@@ -234,7 +256,7 @@ export function ExpenseAnalysis() {
 
         filteredItems.forEach(item => {
             const date = new Date(item.shipmentDate);
-            let key = date.toLocaleDateString(); // Default List/Daily
+            let key = date.toLocaleDateString(); // 기본은 일별 목록
 
             if (filters.groupBy === 'month') {
                 key = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -307,12 +329,12 @@ export function ExpenseAnalysis() {
     return (
         <div className="h-full flex flex-col bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-                <PageHeader title="💰 지출/원가 분석 (Expense Analysis)" description="자재, 후처리, 열처리 등 항목별 원가 지출을 분석합니다." />
+                <PageHeader title="💰 지출/원가 분석" description="자재, 후처리, 열처리 등 항목별 원가 지출을 분석합니다." />
 
-                {/* Filters */}
+                {/* 필터 */}
                 <Section>
                     <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-4">
-                        {/* Top Line: Period / Client / GroupBy */}
+                        {/* 상단 라인: 기간 / 거래처 / 보기 방식 */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                             {/* Period */}
                             <div className="md:col-span-2 space-y-2">
@@ -334,7 +356,7 @@ export function ExpenseAnalysis() {
                                 </div>
                             </div>
 
-                            {/* Client */}
+                            {/* 거래처 */}
                             <div className="space-y-2">
                                 <label className="block text-sm font-bold text-slate-700">🏢 거래처</label>
                                 <select
@@ -347,7 +369,7 @@ export function ExpenseAnalysis() {
                                 </select>
                             </div>
 
-                            {/* Group By */}
+                            {/* 보기 방식 */}
                             <div className="space-y-2">
                                 <label className="block text-sm font-bold text-slate-700">📊 보기 방식</label>
                                 <div className="flex bg-slate-100 rounded-lg p-1">
@@ -372,24 +394,24 @@ export function ExpenseAnalysis() {
                             </div>
                         </div>
 
-                        {/* Bottom Line: Multi-Select Filters */}
+                        {/* 하단 라인: 다중 선택 필터 */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
                             <MultiSelect
-                                label="🧱 소재 (Material Code)"
+                                label="🧱 소재"
                                 options={filterOptions.materials}
                                 selectedValues={selectedMaterials}
                                 onChange={setSelectedMaterials}
                                 placeholder="전체 소재"
                             />
                             <MultiSelect
-                                label="✨ 후처리 (Post-Processing)"
+                                label="✨ 후처리"
                                 options={filterOptions.postProcessings}
                                 selectedValues={selectedPostProcessings}
                                 onChange={setSelectedPostProcessings}
                                 placeholder="전체 후처리"
                             />
                             <MultiSelect
-                                label="🔥 열처리 (Heat-Treatment)"
+                                label="🔥 열처리"
                                 options={filterOptions.heatTreatments}
                                 selectedValues={selectedHeatTreatments}
                                 onChange={setSelectedHeatTreatments}
@@ -399,7 +421,7 @@ export function ExpenseAnalysis() {
                     </div>
                 </Section>
 
-                {/* Summary Cards */}
+                {/* 요약 카드 */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className="p-4 border-l-4 border-blue-500">
                         <h4 className="text-xs font-bold text-slate-500 mb-1">소재비 합계</h4>
@@ -421,7 +443,7 @@ export function ExpenseAnalysis() {
                     </Card>
                 </div>
 
-                {/* Chart Section */}
+                {/* 차트 섹션 */}
                 {filteredItems.length > 0 && filters.groupBy !== 'list' && (
                     <Section title="지출 추이 (기간별)">
                         <Card className="h-[300px]">
@@ -437,7 +459,7 @@ export function ExpenseAnalysis() {
                     </Section>
                 )}
 
-                {/* Data Table */}
+                {/* 데이터 테이블 */}
                 <Section title={`상세 내역 (${filteredItems.length}건)`}>
                     <Card noPadding className="overflow-hidden min-h-[300px]">
                         <div className="overflow-x-auto">

@@ -102,7 +102,7 @@ ChartJS.register(
 
 function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string) => void }) {
   const { stats, loading } = useDashboardStats();
-  const { profile } = useProfile(); // Assuming useProfile is available in scope or imported
+  const { profile } = useProfile();
 
   const chartOptions = {
     responsive: true,
@@ -123,7 +123,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
         padding: 10,
         displayColors: false,
         callbacks: {
-          label: function (context: any) {
+          label: function (context: { parsed: { y: number } }) {
             return `매출: ₩${context.parsed.y.toLocaleString()}`;
           }
         }
@@ -140,10 +140,11 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
             size: 11
           },
           color: '#94a3b8',
-          callback: function (value: any) {
-            if (value >= 1000000) return '₩' + (value / 1000000).toFixed(0) + 'M';
-            if (value >= 1000) return '₩' + (value / 1000).toFixed(0) + 'K';
-            return '₩' + value;
+          callback: function (value: number | string) {
+            const numValue = typeof value === 'string' ? parseFloat(value) : value;
+            if (numValue >= 1000000) return '₩' + (numValue / 1000000).toFixed(0) + 'M';
+            if (numValue >= 1000) return '₩' + (numValue / 1000).toFixed(0) + 'K';
+            return '₩' + numValue;
           }
         },
         border: {
@@ -218,7 +219,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
           }
         />
 
-        {/* KPI Cards */}
+        {/* KPI 카드 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <Card className="hover:shadow-md transition-shadow cursor-default group relative overflow-hidden">
             <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -274,7 +275,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Chart */}
+          {/* 메인 차트 */}
           <div className="lg:col-span-2">
             <Card className="h-[400px] flex flex-col">
               <div className="flex items-center justify-between mb-6">
@@ -289,7 +290,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
             </Card>
           </div>
 
-          {/* Recent Activity */}
+          {/* 최근 활동 */}
           <div className="lg:col-span-1">
             <Card className="h-[400px] flex flex-col">
               <div className="flex items-center justify-between mb-4">

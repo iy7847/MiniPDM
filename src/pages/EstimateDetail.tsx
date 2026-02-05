@@ -1,4 +1,4 @@
-// import { PageLayout } from '../components/common/PageLayout'; // Deprecated
+// import { PageLayout } from '../components/common/PageLayout'; // 권장되지 않음
 import { PageHeader } from '../components/common/ui/PageHeader';
 import { Card } from '../components/common/ui/Card';
 import { Section } from '../components/common/ui/Section';
@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabaseClient';
 import { EstimateHeader } from '../components/estimate/EstimateHeader';
 import { EstimateTable } from '../components/estimate/EstimateTable';
 import { EstimateItemModal } from '../components/estimate/EstimateItemModal';
-import { ImportItemsModal } from '../components/estimate/ImportItemsModal'; // [New]
+import { ImportItemsModal } from '../components/estimate/ImportItemsModal'; // [신규]
 import { QuotationTemplate } from '../components/estimate/QuotationTemplate';
 import { FileDropZone } from '../components/common/FileDropZone';
 import { FilenameParserModal } from '../components/features/FilenameParserModal';
@@ -17,15 +17,6 @@ import { SmartPdfImporter } from '../components/features/SmartPdfImporter';
 import { MobileModal } from '../components/common/MobileModal';
 import { useReactToPrint } from 'react-to-print';
 import { useRef, useState, useEffect, useMemo } from 'react';
-
-export interface AttachedFile {
-  id: string;
-  file_name: string;
-  file_path: string;
-  file_type: string;
-  file_size?: number;
-  original_name?: string;
-}
 
 interface EstimateDetailProps {
   estimateId: string | null;
@@ -61,14 +52,14 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
     saveFilesToStorage, handleDeleteExistingFile, handleOpenFile,
     // handleSaveTerms, // Removed
     toggleSelectAll, toggleSelectItem, handleUpdateItem,
-    totalAmount, convertedTotal, currencySymbol,
+    totalAmount, convertedTotal,
     discountPolicy, defaultHourlyRate,
     createOrderFromEstimate, generateProjectName
   } = useEstimateLogic(estimateId);
 
   // const [isTermModalOpen, setIsTermModalOpen] = useState(false); // Removed per user request
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
-  // [New] Import Modal
+  // [신규] 가져오기 모달
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [previewTemplateType, setPreviewTemplateType] = useState('A');
@@ -113,8 +104,8 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
 
       alert('삭제되었습니다.');
       onBack();
-    } catch (err: any) {
-      alert('삭제 실패: ' + err.message);
+    } catch (err) {
+      alert('삭제 실패: ' + (err instanceof Error ? err.message : '알 수 없는 오류'));
     }
   };
 
@@ -145,233 +136,327 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
     currency: exportAsForeign ? formData.currency : 'KRW'
   };
 
+  const isLocked = formData.status === 'SENT' || formData.status === 'ORDERED';
+
   if (loading) return <div className="h-full flex items-center justify-center text-slate-500">데이터 로딩 중...</div>;
 
   return (
     <>
-      <div className="h-[calc(100vh-64px)] md:h-full flex flex-col bg-slate-50 relative">
+      <div className="h-[calc(100vh-64px)] md:h-full flex flex-col bg-slate-50 relative overflow-hidden">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
           <PageHeader
-            title={estimateId ? (formData.project_name || '견적서 수정') : '새 견적서 작성'}
+            hideGuide={selectedItemIds.size > 0 || isLocked} // 툴바가 활성화되었거나 잠금 상태일 때 도움말 아이콘 숨김
+            title={
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{estimateId ? '📄' : '📝'}</span>
+                <div>
+                  <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">
+                    {estimateId ? (formData.project_name || '견적서 수정') : '새 견적서 작성'}
+                    {isLocked && <span className="ml-3 text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 uppercase tracking-widest align-middle">읽기 전용</span>}
+                  </h1>
+                </div>
+              </div>
+            }
             onBack={onBack}
             actions={
-              <div className="flex flex-wrap items-center gap-4 justify-end">
-                {/* Group 1: Primary Actions */}
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4">
+                {/* 보조 작업 그룹 */}
+                {currentEstimateId && (
+                  <div className="hidden lg:flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm h-[42px]">
+                    <Button variant="ghost" size="sm" onClick={handleExcelClick} className="h-full px-3 text-slate-600 hover:text-emerald-600">
+                      <span className="mr-1.5">💾</span> 엑셀
+                    </Button>
+                    <div className="w-px h-4 bg-slate-100 mx-1"></div>
+                    <Button variant="ghost" size="sm" onClick={() => setIsPreviewModalOpen(true)} className="h-full px-3 text-slate-600 hover:text-indigo-600">
+                      <span className="mr-1.5">🖨️</span> 출력
+                    </Button>
+                  </div>
+                )}
+
+                {/* 기본 작업 버튼 (잠금 상태가 아닐 때만 표시) */}
+                {!isLocked && (
                   <Button
                     onClick={handleSaveHeader}
-                    variant="primary"
-                    className={currentEstimateId ? 'bg-blue-600' : 'bg-blue-600'}
+                    variant={currentEstimateId ? 'secondary' : 'primary'}
+                    className={`h-[42px] px-6 shadow-md ${currentEstimateId ? 'bg-white border-slate-200 text-slate-600' : ''}`}
                   >
-                    {currentEstimateId ? '저장됨' : '저장'}
+                    {currentEstimateId ? (
+                      <div className="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        저장됨
+                      </div>
+                    ) : '견적서 저장'}
                   </Button>
-                </div>
+                )}
 
-                {/* Group 2: Options (Only if created) */}
-                {currentEstimateId && (
-                  <>
-                    <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
+                {/* 상태별 워크플로우 작업 */}
+                {formData.status === 'SENT' && (
+                  <Button
+                    variant="gradient"
+                    className="h-[42px] px-6 shadow-glow animate-pulse"
+                    style={{ animationDuration: '3s' }}
+                    onClick={async () => {
+                      const orderId = await createOrderFromEstimate();
+                      if (orderId && onNavigate) {
+                        if (confirm('수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?')) {
+                          onNavigate('orders');
+                        }
+                      }
+                    }}
+                  >
+                    🚀 수주 등록
+                  </Button>
+                )}
 
-                    <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg cursor-pointer hover:bg-yellow-100 transition-colors shrink-0 h-[38px]">
-                        <input
-                          type="checkbox"
-                          checked={exportAsForeign}
-                          onChange={e => setExportAsForeign(e.target.checked)}
-                          className="w-4 h-4 text-yellow-600 accent-yellow-600 cursor-pointer"
-                        />
-                        <span className="text-xs font-bold text-yellow-800">외화({formData.currency})</span>
-                      </label>
-                    </div>
-
-                    <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
-
-                    {/* Group 3: Outputs */}
-                    <div className="flex items-center gap-2">
-                      <Button variant="success" size="sm" onClick={handleExcelClick} className="bg-emerald-600 hover:bg-emerald-700 text-white h-[38px] shadow-sm border-transparent">
-                        💾 엑셀 저장
-                      </Button>
-
-                      <Button variant="primary" size="sm" onClick={() => setIsPreviewModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 h-[38px]">
-                        🖨️ 출력
-                      </Button>
-                    </div>
-
-                    {/* Group 4: Workflow (Rightmost) */}
-                    {(formData.status === 'SENT' || userRole === 'admin') && (
-                      <>
-                        <div className="h-6 w-px bg-slate-300 mx-1 hidden md:block"></div>
-                        <div className="flex items-center gap-2">
-                          {formData.status === 'SENT' && (
-                            <Button variant="primary" size="sm" className="bg-purple-600 hover:bg-purple-700 h-[38px] shadow-sm animate-pulse"
-                              style={{ animationDuration: '2s' }}
-                              onClick={async () => {
-                                const orderId = await createOrderFromEstimate();
-                                if (orderId && onNavigate) {
-                                  if (confirm('수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?')) {
-                                    onNavigate('orders');
-                                  }
-                                }
-                              }}
-                            >
-                              🚀 수주 등록
-                            </Button>
-                          )}
-
-                          {(userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_delete_estimate) && (
-                            <Button variant="danger" size="sm" onClick={handleDelete} className="h-[38px] opacity-70 hover:opacity-100">
-                              🗑️
-                            </Button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </>
+                {/* 삭제 (관리자 전용) */}
+                {userRole === 'admin' && (
+                  <button onClick={handleDelete} className="p-2 text-slate-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </button>
                 )}
               </div>
             }
           />
 
+          {/* 프로젝트 정보 및 상태 섹션 */}
           <Section>
-            <div className="flex flex-col xl:flex-row gap-4">
-              <div className="flex-1">
-                <Card className="h-full">
-                  <div className="flex items-center gap-4 mb-4">
-                    <h3 className="font-bold text-slate-700">프로젝트 정보</h3>
-                    {currentEstimateId && (
-                      <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm shrink-0">
-                        <span className={`text-sm font-bold ${formData.status === 'SENT' ? 'text-green-600' : formData.status === 'ORDERED' ? 'text-purple-600' : 'text-slate-500'}`}>
-                          {formData.status === 'SENT' ? '✓ 제출' : formData.status === 'ORDERED' ? '✓ 수주' : '✎ 작성'}
+            <div className={`grid grid-cols-1 ${currentEstimateId && !isLocked ? 'lg:grid-cols-12' : ''} gap-6 items-stretch`}>
+              {/* Main Info Card */}
+              <Card className={`${currentEstimateId && !isLocked ? 'lg:col-span-8' : 'w-full'} overflow-hidden`}>
+                <div className="flex items-center justify-between mb-6 pb-2 border-b border-slate-50">
+                  <div className="flex items-center gap-3">
+                    <span className="p-2 bg-slate-100 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </span>
+                    <h3 className="font-black text-slate-700 uppercase tracking-tight">프로젝트 정보</h3>
+                  </div>
+
+                  {currentEstimateId && (
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 mr-4 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={exportAsForeign}
+                          onChange={e => setExportAsForeign(e.target.checked)}
+                          disabled={isLocked}
+                          className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 disabled:opacity-50"
+                        />
+                        <span className="text-xs font-bold text-slate-500 group-hover:text-brand-600 transition-colors">외화 적용</span>
+                      </label>
+
+                      <div className="h-8 w-px bg-slate-100 mx-2"></div>
+
+                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full border shadow-sm ${formData.status === 'SENT' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' :
+                        formData.status === 'ORDERED' ? 'bg-purple-50 border-purple-100 text-purple-700' :
+                          'bg-slate-50 border-slate-200 text-slate-600'
+                        }`}>
+                        <span className="text-xs font-black">
+                          {formData.status === 'SENT' ? '제출됨' : formData.status === 'ORDERED' ? '수주완료' : '작성중'}
                         </span>
                         {formData.status !== 'ORDERED' && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleStatusChange(formData.status === 'SENT' ? 'DRAFT' : 'SENT'); }}
-                            className={`text-sm px-3 py-1 rounded border font-bold transition-colors ${formData.status === 'SENT'
-                              ? 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                              : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'
-                              }`}
+                            className="bg-white/50 hover:bg-white px-2 py-0.5 rounded text-[10px] font-bold transition-colors ml-1"
                           >
-                            {formData.status === 'SENT' ? '취소' : '제출'}
+                            {formData.status === 'SENT' ? '취소' : '변경'}
                           </button>
                         )}
                       </div>
-                    )}
-                  </div>
-                  <EstimateHeader
-                    clients={clients}
-                    formData={formData}
-                    setFormData={setFormData}
-                    onClientChange={handleClientChange}
-                    onGenerateProjectName={generateProjectName}
-                  />
-                </Card>
-              </div>
+                    </div>
+                  )}
+                </div>
+                <EstimateHeader
+                  clients={clients}
+                  formData={formData}
+                  setFormData={setFormData}
+                  onClientChange={handleClientChange}
+                  onGenerateProjectName={generateProjectName}
+                  disabled={isLocked}
+                />
+              </Card>
 
-              {currentEstimateId && (
-                <div className="xl:w-[380px] shrink-0">
-                  <div className="h-full flex flex-col" onClick={openFileDialog}>
-                    <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileInputChange} />
-                    <FileDropZone onFilesDropped={handleFilesDropped} className="flex-1 bg-blue-50 border-blue-200 hover:border-blue-400 hover:bg-blue-100 transition-colors" />
-                    <p className="text-[10px] text-slate-400 text-center mt-1 truncate">
-                      * 저장: {companyRootPath ? `...\\${new Date().getFullYear()}\\${formData.project_name || '...'}` : '(경로 미설정)'}
+              {/* 파일 드롭 영역 카드 (잠금 상태가 아닐 때만 표시) */}
+              {currentEstimateId && !isLocked && (
+                <Card className="lg:col-span-4 bg-slate-50/50 border-dashed border-2 border-slate-200 hover:border-brand-300 transition-colors group relative cursor-pointer p-0 overflow-hidden" noPadding onClick={openFileDialog}>
+                  <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileInputChange} />
+                  <FileDropZone
+                    onFilesDropped={handleFilesDropped}
+                    className="bg-transparent border-none h-full min-h-[140px]"
+                    hideIcon={true}
+                  >
+                    <div className="flex flex-col items-center justify-center p-6 text-center h-full">
+                      <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700 mb-1">여기로 파일을 끌어놓으세요</p>
+                      <p className="text-[10px] text-slate-400">PDF, DXF, STP 등 도면 파일 자동 분석</p>
+                    </div>
+                  </FileDropZone>
+                  <div className="absolute bottom-0 left-0 right-0 bg-white/80 p-1.5 text-center pointer-events-none">
+                    <p className="text-[9px] text-slate-400 font-mono italic truncate">
+                      {companyRootPath ? `...\\${new Date().getFullYear()}\\${formData.project_name || '...'}` : '저장 경로를 먼저 설정해주세요.'}
                     </p>
                   </div>
-                </div>
+                </Card>
               )}
             </div>
           </Section>
 
-          {/* Items Section */}
-          <Section
-            title={
-              <div className="flex items-end gap-3">
+          {/* 품목 섹션 */}
+          <Section>
+            <div className="relative">
+              {/* 동적 선택 툴바 (Gmail 스타일) - 잠금 상태가 아닐 때만 표시 */}
+              {!isLocked && (
+                <div className={`absolute -top-14 left-0 right-0 z-30 transition-all duration-300 transform ${selectedItemIds.size > 0 ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'
+                  }`}>
+                  <div className="bg-slate-900 text-white rounded-2xl shadow-glow px-6 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <span className="bg-brand-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black">
+                        {selectedItemIds.size}
+                      </span>
+                      <span className="text-sm font-bold">건 선택됨</span>
+
+                      <div className="w-px h-6 bg-slate-700 mx-2"></div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-black text-slate-400 uppercase">예상 제작 소요일:</span>
+                        <div className="flex items-center bg-white/10 rounded-lg p-1 border border-white/10">
+                          <input
+                            type="number"
+                            className="w-12 bg-transparent border-none text-white text-xs p-1 text-center outline-none"
+                            value={bulkWorkDays}
+                            onChange={(e) => setBulkWorkDays(Number(e.target.value))}
+                          />
+                          <button
+                            onClick={handleBulkUpdateWorkDays}
+                            className="px-3 py-1 bg-white text-slate-900 text-[10px] font-black rounded-md hover:bg-brand-50 transition-colors"
+                          >
+                            일괄 적용
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleDeleteSelected}
+                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        일괄 삭제
+                      </button>
+                      <button onClick={() => toggleSelectAll(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 테이블 헤더 래퍼 */}
+              <div className="flex items-end justify-between mb-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-700">견적 품목</h2>
-                  <p className="text-xs text-slate-500 mt-1">품목을 추가하고 관리하세요.</p>
+                  <h2 className="text-lg font-black text-slate-800 tracking-tight">견적 품목</h2>
+                  <p className="text-xs text-slate-400 mt-0.5 font-medium">부품 리스트를 작성하고 도면 분석을 시작하세요.</p>
                 </div>
 
-                {/* Batch Actions (Always Visible) */}
-                <div className="flex items-center gap-1 bg-indigo-50 p-1.5 rounded-lg border border-indigo-100 transition-opacity duration-200">
-                  <span className="text-[10px] font-bold text-indigo-700 ml-1 whitespace-nowrap">소요일:</span>
-                  <input
-                    type="number"
-                    className="w-10 border rounded text-xs p-1 text-center bg-white"
-                    value={bulkWorkDays}
-                    onChange={(e) => setBulkWorkDays(Number(e.target.value))}
-                  />
-                  <button
-                    onClick={handleBulkUpdateWorkDays}
-                    disabled={selectedItemIds.size === 0}
-                    className={`px-2 py-1 text-[10px] font-bold rounded-md whitespace-nowrap transition-colors ${selectedItemIds.size > 0 ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-indigo-200 text-indigo-50 cursor-not-allowed'
-                      }`}
-                  >
-                    일괄 적용
-                  </button>
-                  <div className="w-[1px] h-4 bg-indigo-200 mx-1 shrink-0"></div>
-                  <button
-                    onClick={handleDeleteSelected}
-                    disabled={selectedItemIds.size === 0}
-                    className={`px-2 py-1 text-[10px] font-bold whitespace-nowrap transition-colors ${selectedItemIds.size > 0 ? 'text-red-500 hover:text-red-700' : 'text-slate-300 cursor-not-allowed'
-                      }`}
-                  >
-                    삭제 ({selectedItemIds.size})
-                  </button>
-                </div>
+                {!isLocked && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="glass"
+                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsOcrModalOpen(true); }}
+                      className="text-brand-700 bg-brand-50 border-brand-100 hover:bg-brand-100"
+                    >
+                      <span className="mr-1.5 text-xs">⚡</span> 도면 분석
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="glass"
+                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsImportModalOpen(true); }}
+                      className="text-cyan-700 bg-cyan-50 border-cyan-100 hover:bg-cyan-100"
+                    >
+                      <span className="mr-1.5 text-xs">📂</span> 가져오기
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); openItemModal(null); }}
+                      className="px-6 shadow-glow"
+                    >
+                      + 품목 추가
+                    </Button>
+                  </div>
+                )}
               </div>
-            }
-            rightElement={
-              <div className="flex flex-wrap gap-2 items-center">
-                {/* Batch Actions Moved to Title */}
 
-                <div className="flex gap-2">
-                  <Button size="sm" variant="primary" className="bg-orange-500 hover:bg-orange-600" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsOcrModalOpen(true); }}>
-                    ⚡ 도면 분석
-                  </Button>
-                  <Button size="sm" variant="primary" className="bg-cyan-600 hover:bg-cyan-700" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsImportModalOpen(true); }}>
-                    📂 가져오기
-                  </Button>
-                  <Button size="sm" variant="success" onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); openItemModal(null); }}>
-                    + 직접 추가
-                  </Button>
-                </div>
-              </div>
-            }
-          >
-            <Card noPadding>
-              <EstimateTable
-                items={items}
-                materials={materials}
-                postProcessings={postProcessings} // [New]
-                heatTreatments={heatTreatments}   // [New]
-                currency={formData.currency}
-                exchangeRate={formData.exchange_rate}
-                selectedItemIds={selectedItemIds}
-                onToggleSelectAll={toggleSelectAll}
-                onToggleSelectItem={toggleSelectItem}
-                onEditItem={openItemModal}
-                onDeleteItem={handleDeleteItem}
-                onUpdateItem={handleUpdateItem}
-                canViewMargins={userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_view_margins}
-                timeStep={companyInfo?.default_time_step || 0.1} // [New]
-              />
-            </Card>
+              <Card noPadding className="border-0 shadow-soft overflow-hidden rounded-2xl min-h-[400px]">
+                <EstimateTable
+                  items={items}
+                  materials={materials}
+                  postProcessings={postProcessings}
+                  heatTreatments={heatTreatments}
+                  currency={formData.currency}
+                  exchangeRate={formData.exchange_rate}
+                  selectedItemIds={selectedItemIds}
+                  onToggleSelectAll={toggleSelectAll}
+                  onToggleSelectItem={toggleSelectItem}
+                  onEditItem={openItemModal}
+                  onDeleteItem={handleDeleteItem}
+                  onUpdateItem={handleUpdateItem}
+                  canViewMargins={userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_view_margins}
+                  timeStep={companyInfo?.default_time_step || 0.1}
+                  isLocked={isLocked}
+                />
+              </Card>
+            </div>
           </Section>
         </div>
 
-        {/* Sticky Footer (Flex Item, relative) */}
-        <div className="shrink-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200 z-20 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
-          <div className="flex justify-end items-center gap-4 md:gap-8 max-w-7xl mx-auto">
-            {formData.currency !== 'KRW' && (
-              <div className="text-right">
-                <span className="text-[10px] md:text-xs font-bold text-slate-500 block mb-0.5">외화 환산 금액 ({formData.currency})</span>
-                <span className="text-sm md:text-lg font-bold text-slate-600">
-                  {currencySymbol} {convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </span>
+        {/* 고정 푸터 */}
+        <div className="shrink-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-100 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
+          <div className="flex justify-between items-center max-w-7xl mx-auto px-4 md:px-8">
+            <div className="hidden sm:block">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">상태</span>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${formData.status === 'SENT' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
+                <span className="text-sm font-bold text-slate-700">{formData.status === 'SENT' ? '견적서 제출됨' : '작성 중'}</span>
               </div>
-            )}
-            <div className="text-right">
-              <span className="text-[10px] md:text-xs font-bold text-slate-500 block mb-0.5">총 견적 금액 (KRW)</span>
-              <span className="text-xl md:text-3xl font-black text-blue-700 tracking-tight">₩{totalAmount.toLocaleString()}</span>
+            </div>
+
+            <div className="flex items-center gap-8 md:gap-12">
+              {formData.currency !== 'KRW' && (
+                <div className="text-right">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">외화 환산</span>
+                  <div className="flex items-baseline gap-1.5 justify-end">
+                    <span className="text-xs font-bold text-slate-500">{formData.currency}</span>
+                    <span className="text-lg md:text-2xl font-black text-slate-600 tracking-tight">
+                      {convertedTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="text-right">
+                <span className="text-[10px] font-black text-brand-400 uppercase tracking-widest block mb-1">총 합계</span>
+                <div className="flex items-baseline gap-1.5 justify-end">
+                  <span className="text-xs md:text-sm font-bold text-brand-600">KRW</span>
+                  <span className="text-2xl md:text-4xl font-black text-brand-600 tracking-tighter">
+                    ₩{totalAmount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -455,13 +540,13 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         estimateId={currentEstimateId}
         materials={materials}
         postProcessings={postProcessings}
-        heatTreatments={heatTreatments} // [NEW]
+        heatTreatments={heatTreatments} // [신규]
         currency={formData.currency}
         exchangeRate={formData.exchange_rate}
         editingItem={editingItem}
         discountPolicy={discountPolicy}
         defaultHourlyRate={defaultHourlyRate}
-        existingItems={items} // [Added] Duplicate Check
+        existingItems={items} // [추가] 중복 확인
         onSaveSuccess={async () => { await updateEstimateTotalAmount(currentEstimateId!); await fetchEstimateItems(currentEstimateId!); }}
         onSaveFiles={saveFilesToStorage}
         onDeleteExistingFile={handleDeleteExistingFile}
@@ -486,10 +571,9 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onConfirm={async (newItems) => {
-          // Transform and add items
-          // Transform and add items
+          // 품목 변환 및 추가
           const parsedItems = newItems.map(item => {
-            // [Parse Spec String] e.g. "10x20x5" or "10-20-5"
+            // [규격 문자열 파싱] 예: "10x20x5" 또는 "10-20-5"
             let w = 0, d = 0, h = 0;
             if (item.spec) {
               const nums = item.spec.match(/[\d.]+/g)?.map(Number) || [];
@@ -498,24 +582,24 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
               if (nums.length >= 3) h = nums[2];
             }
 
-            // [Resolve IDs from Text]
+            // [텍스트로부터 ID 확인]
             const matName = item.material_text?.trim();
             const processName = item.post_process_text?.trim();
             const heatName = item.heat_treatment_text?.trim();
 
-            let foundMatId = null;
+            let foundMatId: string | null = null;
             if (matName) {
               const foundMat = materials.find(m => m.name === matName || m.code === matName);
               if (foundMat) foundMatId = foundMat.id;
             }
 
-            let foundProcessId = null;
+            let foundProcessId: string | null = null;
             if (processName) {
               const foundProc = postProcessings.find(p => p.name === processName);
               if (foundProc) foundProcessId = foundProc.id;
             }
 
-            let foundHeatId = null;
+            let foundHeatId: string | null = null;
             if (heatName) {
               const foundHeat = heatTreatments.find(h => h.name === heatName);
               if (foundHeat) foundHeatId = foundHeat.id;
@@ -524,17 +608,17 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
             return {
               part_name: item.part_name || '',
               part_no: item.drawing_number || '',
-              original_material_name: item.original_material_name || '', // [Mapped]
+              original_material_name: item.original_material_name || '', // [매핑됨]
               spec_w: w,
               spec_d: d,
               spec_h: h,
               unit_price: item.unit_price,
               qty: item.qty,
-              material_id: foundMatId, // [Resolved]
-              post_processing_id: foundProcessId, // [Resolved]
-              heat_treatment_id: foundHeatId, // [Resolved]
+              material_id: foundMatId, // [확인됨]
+              post_processing_id: foundProcessId, // [확인됨]
+              heat_treatment_id: foundHeatId, // [확인됨]
               files: []
-              // Note: 'spec' property is intentionally OMITTED to avoid DB error
+              // 참고: DB 오류를 방지하기 위해 'spec' 속성은 의도적으로 제외되었습니다.
             };
           });
           await handleParsedItemsConfirm(parsedItems);

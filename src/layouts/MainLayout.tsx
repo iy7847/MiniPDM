@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
-import { GuideButton } from '../components/common/Guide/GuideButton';
 import { GuideDrawer } from '../components/common/Guide/GuideDrawer';
+import { GuideProvider, useGuide } from '../contexts/GuideContext';
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -11,9 +11,17 @@ interface MainLayoutProps {
     title?: string; // Optional override for header title
 }
 
-export function MainLayout({ children, currentPage, onNavigate, onLogout, title }: MainLayoutProps) {
+export function MainLayout(props: MainLayoutProps) {
+    return (
+        <GuideProvider>
+            <MainLayoutContent {...props} />
+        </GuideProvider>
+    );
+}
+
+function MainLayoutContent({ children, currentPage, onNavigate, onLogout, title }: MainLayoutProps) {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    const [isGuideOpen, setIsGuideOpen] = useState(false);
+    const { isOpen, closeGuide } = useGuide();
 
     React.useEffect(() => {
         if (title) {
@@ -53,13 +61,7 @@ export function MainLayout({ children, currentPage, onNavigate, onLogout, title 
                         </button>
                         <span className="font-black text-slate-800 text-lg tracking-tight">MiniPDM</span>
                     </div>
-                    <GuideButton onClick={() => setIsGuideOpen(true)} />
                 </header>
-
-                {/* Global Guide Button (Desktop) */}
-                <div className="hidden md:block absolute top-6 right-8 z-30">
-                    <GuideButton onClick={() => setIsGuideOpen(true)} className="shadow-soft bg-white/80 backdrop-blur border border-white/40 hover:bg-white" />
-                </div>
 
                 {/* Content */}
                 <main className="flex-1 overflow-hidden relative">
@@ -68,8 +70,8 @@ export function MainLayout({ children, currentPage, onNavigate, onLogout, title 
 
                 {/* Guide Drawer */}
                 <GuideDrawer
-                    isOpen={isGuideOpen}
-                    onClose={() => setIsGuideOpen(false)}
+                    isOpen={isOpen}
+                    onClose={closeGuide}
                     pageKey={currentPage}
                 />
             </div>

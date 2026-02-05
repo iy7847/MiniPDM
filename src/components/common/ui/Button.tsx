@@ -17,7 +17,7 @@ export function Button({
     disabled,
     ...props
 }: ButtonProps) {
-    const baseStyles = 'inline-flex items-center justify-center rounded-xl font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed selection:bg-transparent shadow-sm hover:-translate-y-0.5 active:translate-y-0';
+    const baseStyles = 'inline-flex items-center justify-center rounded-xl font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed selection:bg-transparent shadow-sm hover:-translate-y-0.5 active:translate-y-0 whitespace-nowrap';
 
     const variants = {
         primary: 'bg-brand-600 text-white hover:bg-brand-700 hover:shadow-glow focus:ring-brand-500 border border-transparent',

@@ -1,24 +1,23 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { useProfile } from '../hooks/useProfile'; // Implemented useProfile
+import { useProfile } from '../hooks/useProfile'; // useProfile 구현체
 import { PageHeader } from '../components/common/ui/PageHeader';
-import { Section } from '../components/common/ui/Section';
 import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { FormattedInput } from '../components/common/FormattedInput';
 import { NumberInput } from '../components/common/NumberInput';
 import { DiscountPolicyChart, DEFAULT_POLICY } from '../components/settings/DiscountPolicyChart';
 import { ExcelExportPreset, EXCEL_AVAILABLE_COLUMNS } from '../types/estimate';
-import { UserManagement } from '../components/features/UserManagement'; // Implemented UserManagement
+import { UserManagement } from '../components/features/UserManagement'; // UserManagement 구현체
 
 export function Settings() {
-  const { profile } = useProfile(); // Get profile
+  const { profile } = useProfile(); // 프로필 정보 가져오기
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [companyId, setCompanyId] = useState('');
-  const [activeTab, setActiveTab] = useState<'basic' | 'discount' | 'quotation' | 'users'>('basic'); // Added 'users'
+  const [activeTab, setActiveTab] = useState<'basic' | 'discount' | 'quotation' | 'users'>('basic'); // 'users' 탭 추가
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -43,13 +42,13 @@ export function Settings() {
     default_delivery_period: '',
     default_destination: '',
     default_note: '',
-    label_printer_width: 55, // Default
-    label_printer_height: 35, // Default
+    label_printer_width: 55, // 기본값
+    label_printer_height: 35, // 기본값
     default_margin_w: 5,
     default_margin_d: 5,
     default_margin_h: 0,
-    default_margin_round_w: 5, // [New]
-    default_margin_round_d: 5, // [New]
+    default_margin_round_w: 5, // [신규]
+    default_margin_round_d: 5, // [신규]
     default_rounding_unit: 1000,
     default_time_step: 0.1,
   });
@@ -109,8 +108,8 @@ export function Settings() {
             default_margin_w: company.default_margin_w !== null ? company.default_margin_w : 5,
             default_margin_d: company.default_margin_d !== null ? company.default_margin_d : 5,
             default_margin_h: company.default_margin_h !== null ? company.default_margin_h : 0,
-            default_margin_round_w: company.default_margin_round_w !== null ? company.default_margin_round_w : 5, // [New]
-            default_margin_round_d: company.default_margin_round_d !== null ? company.default_margin_round_d : 5, // [New]
+            default_margin_round_w: company.default_margin_round_w !== null ? company.default_margin_round_w : 5, // [신규]
+            default_margin_round_d: company.default_margin_round_d !== null ? company.default_margin_round_d : 5, // [신규]
             default_rounding_unit: company.default_rounding_unit || 1000,
             default_time_step: company.default_time_step || 0.1,
           });
@@ -160,8 +159,8 @@ export function Settings() {
           default_margin_w: form.default_margin_w,
           default_margin_d: form.default_margin_d,
           default_margin_h: form.default_margin_h,
-          default_margin_round_w: form.default_margin_round_w, // [New]
-          default_margin_round_d: form.default_margin_round_d, // [New]
+          default_margin_round_w: form.default_margin_round_w, // [신규]
+          default_margin_round_d: form.default_margin_round_d, // [신규]
           default_rounding_unit: form.default_rounding_unit,
           default_time_step: form.default_time_step,
           updated_at: new Date().toISOString()
@@ -170,9 +169,10 @@ export function Settings() {
 
       if (error) throw error;
       setNotification({ message: '회사 설정이 성공적으로 저장되었습니다.', type: 'success' });
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setNotification({ message: `저장 실패: ${err.message}`, type: 'error' });
+      const message = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
+      setNotification({ message: `저장 실패: ${message}`, type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -246,11 +246,11 @@ export function Settings() {
     setDraggedItemIndex(null);
   };
 
-  const handlePolicyChange = (newPolicy: any) => {
+  const handlePolicyChange = (newPolicy: typeof DEFAULT_POLICY) => {
     setForm(prev => ({ ...prev, discount_policy: newPolicy }));
   };
 
-  const updateForm = (key: string, value: any) => {
+  const updateForm = (key: keyof typeof form, value: string | number | typeof DEFAULT_POLICY) => {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
@@ -273,384 +273,440 @@ export function Settings() {
     }
   };
 
-  if (loading) return <div className="p-8">로딩 중...</div>;
+  if (loading) return (
+    <div className="h-full flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
+        <p className="text-slate-500 font-bold animate-pulse">설정 데이터 로드 중...</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 relative">
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-        <PageHeader
-          title="환경 설정"
-          actions={
-            <Button
-              variant="primary"
-              onClick={handleSave}
-              isLoading={saving}
-              disabled={saving}
-            >
-              {saving ? '저장 중...' : '설정 저장하기'}
-            </Button>
-          }
-        />
+    <div className="h-full flex flex-col bg-slate-50 relative overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-4 py-8 md:px-8 space-y-8">
+        <div className="max-w-5xl mx-auto">
+          <PageHeader
+            title={
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚙️</span>
+                <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">환경 설정</h1>
+              </div>
+            }
+            actions={
+              <Button
+                variant="primary"
+                onClick={handleSave}
+                isLoading={saving}
+                disabled={saving}
+                className="shadow-glow h-[42px] px-6"
+              >
+                {saving ? '저장 중...' : '변경사항 저장하기'}
+              </Button>
+            }
+          />
 
-        {notification && (
-          <div className={`p-4 rounded-lg text-center text-sm font-bold shadow-sm ${notification.type === 'success' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-            {notification.message}
+          {notification && (
+            <div className={`mt-6 p-4 rounded-2xl text-center text-sm font-black shadow-soft border animate-in fade-in slide-in-from-top-4 duration-300 ${notification.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+              : 'bg-red-50 text-red-700 border-red-100'
+              }`}>
+              {notification.type === 'success' ? '✅ ' : '❌ '}
+              {notification.message}
+            </div>
+          )}
+
+          {/* Navigation Tabs */}
+          <div className="mt-8 flex justify-center">
+            <div className="inline-flex bg-slate-200/50 p-1.5 rounded-2xl backdrop-blur-sm border border-slate-200 shadow-inner">
+              {[
+                { id: 'basic', label: '기본 정보', icon: '🏢' },
+                { id: 'quotation', label: '견적/엑셀', icon: '📄' },
+                { id: 'discount', label: '할인율 정책', icon: '📈' },
+                ...(isAdmin ? [{ id: 'users', label: '사용자 관리', icon: '👥' }] : [])
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex items-center gap-2 px-6 py-2.5 text-sm font-black rounded-xl transition-all duration-200 ${activeTab === tab.id
+                    ? 'bg-white text-brand-600 shadow-soft scale-105 ring-1 ring-slate-200'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
+                    }`}
+                >
+                  <span className="text-base">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
 
-        <div className="flex bg-white p-1 gap-1 border border-slate-200 rounded-lg w-full max-w-2xl mx-auto shadow-sm">
-          <button
-            onClick={() => setActiveTab('basic')}
-            className={`flex-1 py-2 text-sm font-bold text-center rounded-md transition-all ${activeTab === 'basic'
-              ? 'bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}
-          >
-            기본 정보 설정
-          </button>
-          <button
-            onClick={() => setActiveTab('quotation')}
-            className={`flex-1 py-2 text-sm font-bold text-center rounded-md transition-all ${activeTab === 'quotation'
-              ? 'bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}
-          >
-            견적서/엑셀 설정
-          </button>
-          <button
-            onClick={() => setActiveTab('discount')}
-            className={`flex-1 py-2 text-sm font-bold text-center rounded-md transition-all ${activeTab === 'discount'
-              ? 'bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-              }`}
-          >
-            할인율 정책
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`flex-1 py-2 text-sm font-bold text-center rounded-md transition-all ${activeTab === 'users'
-                ? 'bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100'
-                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                }`}
-            >
-              사용자 관리
-            </button>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="pb-12">
-
-          {/* [탭 1] 기본 정보 */}
-          {activeTab === 'basic' && (
-            <Section title="기본 정보" className="max-w-xl mx-auto">
-              <Card>
-                <div className="space-y-6">
-                  <div><label className="block text-sm font-bold text-slate-700 mb-1">회사명</label><input className="w-full border p-2 rounded bg-slate-50 text-slate-500" value={form.name} disabled /></div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><FormattedInput label="사업자등록번호" type="biz_num" value={form.biz_num} onChange={(val) => updateForm('biz_num', val)} /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 mb-1">대표자명</label><input className="w-full border p-2 rounded text-sm" value={form.ceo_name} onChange={(e) => updateForm('ceo_name', e.target.value)} /></div>
-                  </div>
-
-                  <div><label className="block text-xs font-bold text-slate-500 mb-1">주소 (Address)</label><input className="w-full border p-2 rounded text-sm" value={form.address} onChange={(e) => updateForm('address', e.target.value)} placeholder="견적서에 표시될 주소를 입력하세요" /></div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><FormattedInput label="전화번호 (Tel)" type="phone" value={form.phone} onChange={(val) => updateForm('phone', val)} /></div>
-                    <div><FormattedInput label="팩스 (Fax)" type="phone" value={form.fax} onChange={(val) => updateForm('fax', val)} /></div>
-                  </div>
-
-                  <div><FormattedInput label="이메일 (Email)" type="email" value={form.email} onChange={(val) => updateForm('email', val)} /></div>
-
-                  <div className="h-px bg-slate-100 my-4"></div>
-
-                  <div className="bg-slate-50 p-4 rounded border border-slate-200"><label className="block text-sm font-bold text-slate-700 mb-1">기본 적용 환율 (USD 기준)</label><NumberInput value={form.default_exchange_rate} onChange={(val) => updateForm('default_exchange_rate', val)} /></div>
-                  <div className="bg-orange-50 p-4 rounded border border-orange-200"><label className="block text-sm font-bold text-orange-800 mb-1">기본 임율 (가공비 계산용)</label><NumberInput value={form.default_hourly_rate} onChange={(val) => updateForm('default_hourly_rate', val)} className="text-orange-700 font-bold" /></div>
-                  <div className="bg-blue-50 p-4 rounded border border-blue-200">
-                    <label className="block text-sm font-bold text-blue-800 mb-1">📂 파일 저장소 루트 경로</label>
-                    <div className="flex gap-2 h-10">
-                      <input
-                        className="flex-1 border border-blue-300 px-3 py-2 rounded text-sm font-mono bg-white"
-                        value={form.root_path}
-                        onChange={(e) => updateForm('root_path', e.target.value)}
-                      />
-                      <button
-                        onClick={handleSelectRootPath}
-                        className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold flex items-center justify-center hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
-                      >
-                        폴더 선택
-                      </button>
+          <div className="mt-10 pb-20">
+            {/* [탭 1] 기본 정보 */}
+            {activeTab === 'basic' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-8">
+                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden">
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-50">
+                      <span className="p-2 bg-indigo-50 rounded-xl text-lg">🏢</span>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">회사 프로필</h3>
                     </div>
-                  </div>
-
-                  {/* Label Printer Settings */}
-                  <div className="bg-slate-100 p-4 rounded border border-slate-300">
-                    <label className="block text-sm font-bold text-slate-800 mb-2">🖨️ 라벨 프린터 기본 설정 (Label Size)</label>
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold text-slate-500 mb-1">너비 (Width, mm)</label>
-                        <NumberInput
-                          value={form.label_printer_width}
-                          onChange={(val) => updateForm('label_printer_width', val)}
-                          placeholder="55"
-                        />
+                    <div className="space-y-6">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">상호명 (Company Name)</label>
+                        <input className="w-full border-0 p-3 rounded-2xl bg-slate-100/50 text-slate-500 font-bold outline-none cursor-not-allowed" value={form.name} disabled />
                       </div>
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold text-slate-500 mb-1">높이 (Height, mm)</label>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormattedInput label="사업자등록번호" type="biz_num" value={form.biz_num} onChange={(val) => updateForm('biz_num', val)} />
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">대표자명</label>
+                          <input className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brand-100 transition-all outline-none" value={form.ceo_name} onChange={(e) => updateForm('ceo_name', e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">주소 (Address)</label>
+                        <input className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brand-100 transition-all outline-none text-slate-700" value={form.address} onChange={(e) => updateForm('address', e.target.value)} placeholder="견적서에 표시될 주소를 입력하세요" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormattedInput label="전화번호 (Tel)" type="phone" value={form.phone} onChange={(val) => updateForm('phone', val)} />
+                        <FormattedInput label="팩스 (Fax)" type="phone" value={form.fax} onChange={(val) => updateForm('fax', val)} />
+                      </div>
+
+                      <FormattedInput label="이메일 (Email)" type="email" value={form.email} onChange={(val) => updateForm('email', val)} />
+                    </div>
+                  </Card>
+
+                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden bg-brand-600 text-white">
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-brand-500/30">
+                      <span className="p-2 bg-white/10 rounded-xl text-lg">💰</span>
+                      <h3 className="font-black text-white uppercase tracking-tight">재무 및 산정 기준</h3>
+                    </div>
+                    <div className="space-y-6">
+                      <div className="bg-white/10 p-5 rounded-2xl border border-white/10">
+                        <label className="block text-[10px] font-black text-white/60 uppercase tracking-widest mb-2">기본 적용 환율 (USD/KRW)</label>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl font-black text-white/50">$ 1 =</span>
+                          <NumberInput
+                            value={form.default_exchange_rate}
+                            onChange={(val) => updateForm('default_exchange_rate', val)}
+                            className="bg-transparent border-white/20 text-white text-2xl font-black focus:ring-white/20"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-white/10 p-5 rounded-2xl border border-white/10">
+                        <label className="block text-[10px] font-black text-white/60 uppercase tracking-widest mb-2">작업 임율 (Hourly Rate, ₩/hr)</label>
                         <NumberInput
-                          value={form.label_printer_height}
-                          onChange={(val) => updateForm('label_printer_height', val)}
-                          placeholder="35"
+                          value={form.default_hourly_rate}
+                          onChange={(val) => updateForm('default_hourly_rate', val)}
+                          className="bg-transparent border-white/20 text-white text-2xl font-black focus:ring-white/20"
                         />
                       </div>
                     </div>
-                  </div>
-
-                  {/* Rounding & Time Step Settings */}
-                  <div className="bg-slate-100 p-4 rounded border border-slate-300 mt-4">
-                    <label className="block text-sm font-bold text-slate-800 mb-2">⚙️ 계산 설정 (Calculation Settings)</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">단가 절사 단위 (Rounding Unit)</label>
-                        <select
-                          className="w-full border p-2 rounded text-sm bg-white"
-                          value={form.default_rounding_unit}
-                          onChange={(e) => updateForm('default_rounding_unit', parseInt(e.target.value))}
-                        >
-                          <option value="1">1원 단위</option>
-                          <option value="10">10원 단위</option>
-                          <option value="100">100원 단위</option>
-                          <option value="1000">1000원 단위</option>
-                          <option value="10000">10000원 단위</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">가공 시간 단위 (Time Step)</label>
-                        <select
-                          className="w-full border p-2 rounded text-sm bg-white"
-                          value={form.default_time_step}
-                          onChange={(e) => updateForm('default_time_step', parseFloat(e.target.value))}
-                        >
-                          <option value="1">1 (Integer)</option>
-                          <option value="0.1">0.1 (1 Decimal)</option>
-                          <option value="0.01">0.01 (2 Decimals)</option>
-                          <option value="0.001">0.001 (3 Decimals)</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Default Material Margins */}
-                  <div className="bg-slate-100 p-4 rounded border border-slate-300 mt-4">
-                    <label className="block text-sm font-bold text-slate-800 mb-2">📐 기본 자재 여유 치수 (Default Material Margins)</label>
-
-                    {/* Plate Margins */}
-                    <div className="mb-4">
-                      <label className="block text-xs font-bold text-blue-600 mb-2 border-b border-slate-300 pb-1">⬛ 사각/판재 (Plate)</label>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">두께 여유 (Height +)</label>
-                          <NumberInput
-                            value={form.default_margin_h}
-                            onChange={(val) => updateForm('default_margin_h', val)}
-                            placeholder="0"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">가로 여유 (Width +)</label>
-                          <NumberInput
-                            value={form.default_margin_w}
-                            onChange={(val) => updateForm('default_margin_w', val)}
-                            placeholder="5"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">세로 여유 (Depth +)</label>
-                          <NumberInput
-                            value={form.default_margin_d}
-                            onChange={(val) => updateForm('default_margin_d', val)}
-                            placeholder="5"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Round Margins */}
-                    <div>
-                      <label className="block text-xs font-bold text-green-600 mb-2 border-b border-slate-300 pb-1">⚫ 원형/봉재 (Round Bar)</label>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">지름 여유 (OD +)</label>
-                          <NumberInput
-                            value={form.default_margin_round_w}
-                            onChange={(val) => updateForm('default_margin_round_w', val)}
-                            placeholder="5"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">길이 여유 (L +)</label>
-                          <NumberInput
-                            value={form.default_margin_round_d}
-                            onChange={(val) => updateForm('default_margin_round_d', val)}
-                            placeholder="5"
-                          />
-                        </div>
-                        <div className="opacity-50">
-                          <label className="block text-xs font-bold text-slate-400 mb-1">-</label>
-                          <input disabled className="w-full border p-2 rounded bg-slate-100" />
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
+                  </Card>
                 </div>
-              </Card>
-            </Section>
-          )}
 
-          {/* [탭 2] 견적서/엑셀 설정 */}
-          {activeTab === 'quotation' && (
-            <div className="space-y-6 max-w-4xl mx-auto">
-              <Section title="견적서 양식 (Template)">
-                <Card>
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    {['A', 'B', 'C'].map((type) => (
+                <div className="space-y-8">
+                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden">
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-50">
+                      <span className="p-2 bg-blue-50 rounded-xl text-lg">📁</span>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">저장소 및 프린터 (Storage & Print)</h3>
+                    </div>
+                    <div className="space-y-6">
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">📂 파일 저장소 루트 경로</label>
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-xs font-mono text-slate-600 outline-none"
+                            value={form.root_path}
+                            onChange={(e) => updateForm('root_path', e.target.value)}
+                          />
+                          <button
+                            onClick={handleSelectRootPath}
+                            className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-slate-900 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap"
+                          >
+                            경로 선택
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">🖨️ 라벨 프린터 규격 (mm)</label>
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Width</label>
+                            <NumberInput
+                              value={form.label_printer_width}
+                              onChange={(val) => updateForm('label_printer_width', val)}
+                              className="rounded-xl border-slate-200"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Height</label>
+                            <NumberInput
+                              value={form.label_printer_height}
+                              onChange={(val) => updateForm('label_printer_height', val)}
+                              className="rounded-xl border-slate-200"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden">
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-50">
+                      <span className="p-2 bg-emerald-50 rounded-xl text-lg">📐</span>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">자재 마진 및 산출 (Calculation)</h3>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">단가 절사 단위</label>
+                          <select
+                            className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-brand-50"
+                            value={form.default_rounding_unit}
+                            onChange={(e) => updateForm('default_rounding_unit', parseInt(e.target.value))}
+                          >
+                            <option value="1">1원 단위</option>
+                            <option value="10">10원 단위</option>
+                            <option value="100">100원 단위</option>
+                            <option value="1000">1000원 단위</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">시간 절사 단위</label>
+                          <select
+                            className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-brand-50"
+                            value={form.default_time_step}
+                            onChange={(e) => updateForm('default_time_step', parseFloat(e.target.value))}
+                          >
+                            <option value="1">1.0</option>
+                            <option value="0.1">0.1</option>
+                            <option value="0.01">0.01</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="p-5 bg-slate-50 rounded-3xl border border-slate-200 space-y-6">
+                        <div className="space-y-3">
+                          <label className="inline-flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                            ⬛ Plate Default Margins (mm)
+                          </label>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">T+</label>
+                              <NumberInput value={form.default_margin_h} onChange={(val) => updateForm('default_margin_h', val)} className="rounded-xl bg-white border-slate-200 shadow-sm sm:h-9" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">W+</label>
+                              <NumberInput value={form.default_margin_w} onChange={(val) => updateForm('default_margin_w', val)} className="rounded-xl bg-white border-slate-200 shadow-sm sm:h-9" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">D+</label>
+                              <NumberInput value={form.default_margin_d} onChange={(val) => updateForm('default_margin_d', val)} className="rounded-xl bg-white border-slate-200 shadow-sm sm:h-9" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t border-slate-200">
+                          <label className="inline-flex items-center gap-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">
+                            ⚫ Round Bar Default Margins (mm)
+                          </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">OD+</label>
+                              <NumberInput value={form.default_margin_round_w} onChange={(val) => updateForm('default_margin_round_w', val)} className="rounded-xl bg-white border-slate-200 shadow-sm sm:h-9" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-slate-400 uppercase ml-1">L+</label>
+                              <NumberInput value={form.default_margin_round_d} onChange={(val) => updateForm('default_margin_round_d', val)} className="rounded-xl bg-white border-slate-200 shadow-sm sm:h-9" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* [탭 2] 견적서/엑셀 설정 */}
+            {activeTab === 'quotation' && (
+              <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <Card className="shadow-smooth rounded-3xl border-0 overflow-hidden">
+                  <div className="flex items-center gap-3 mb-8 pb-3 border-b border-slate-50">
+                    <span className="p-2 bg-indigo-50 rounded-xl text-lg">📄</span>
+                    <h3 className="font-black text-slate-700 uppercase tracking-tight">견적서 양식 및 자산 (Assets)</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                    {[
+                      { type: 'A', name: 'Modern Full', color: 'bg-indigo-600' },
+                      { type: 'B', name: 'Classic Simple', color: 'bg-slate-800' },
+                      { type: 'C', name: 'Detailed Table', color: 'bg-emerald-600' }
+                    ].map((tpl) => (
                       <div
-                        key={type}
-                        onClick={() => updateForm('quotation_template_type', type)}
-                        className={`cursor-pointer border-2 rounded-lg p-4 flex flex-col items-center gap-2 transition-all ${form.quotation_template_type === type ? 'border-blue-600 bg-blue-50' : 'border-slate-200 hover:border-blue-300'
+                        key={tpl.type}
+                        onClick={() => updateForm('quotation_template_type', tpl.type)}
+                        className={`group cursor-pointer relative border-2 rounded-2xl p-6 flex flex-col items-center gap-4 transition-all duration-300 ${form.quotation_template_type === tpl.type
+                          ? 'border-brand-500 bg-brand-50 shadow-soft scale-105'
+                          : 'border-slate-100 bg-slate-50/30 hover:bg-white hover:border-slate-200'
                           }`}
                       >
-                        <div className="w-16 h-20 bg-white border border-slate-300 shadow-sm flex items-center justify-center text-xs text-slate-400">
-                          {type === 'A' ? 'Modern' : type === 'B' ? 'Classic' : 'Detail'}
+                        <div className={`w-28 h-36 rounded-lg shadow-smooth border border-slate-200 overflow-hidden transition-transform duration-300 group-hover:-translate-y-2 ${form.quotation_template_type === tpl.type ? 'bg-white' : 'bg-slate-100'
+                          }`}>
+                          <div className={`h-2 ${tpl.color}`}></div>
+                          <div className="p-3 space-y-2">
+                            <div className="h-1.5 w-full bg-slate-200 rounded"></div>
+                            <div className="h-1.5 w-2/3 bg-slate-200 rounded"></div>
+                            <div className="pt-2 grid grid-cols-4 gap-1">
+                              <div className="h-1 bg-slate-100 rounded"></div>
+                              <div className="h-1 bg-slate-100 rounded"></div>
+                              <div className="h-1 bg-slate-100 rounded"></div>
+                              <div className="h-1 bg-slate-100 rounded"></div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="h-1 bg-slate-100 rounded w-full"></div>
+                              <div className="h-1 bg-slate-100 rounded w-full"></div>
+                            </div>
+                          </div>
                         </div>
-                        <span className={`font-bold ${form.quotation_template_type === type ? 'text-blue-700' : 'text-slate-600'}`}>Type {type}</span>
+                        <div className="text-center">
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${form.quotation_template_type === tpl.type ? 'text-brand-600' : 'text-slate-400'
+                            }`}>Template</span>
+                          <h4 className={`text-base font-black tracking-tight ${form.quotation_template_type === tpl.type ? 'text-brand-700' : 'text-slate-700'
+                            }`}>{tpl.name}</h4>
+                        </div>
+                        {form.quotation_template_type === tpl.type && (
+                          <div className="absolute -top-2 -right-2 w-6 h-6 bg-brand-600 text-white rounded-full flex items-center justify-center font-bold text-xs shadow-glow">✓</div>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  <h4 className="text-sm font-bold text-slate-700 mb-3">🖼️ 로고 및 직인</h4>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1.5">회사 로고 (상단)</label>
-                      <div className="flex gap-2 h-9">
-                        <input className="flex-1 border p-2 rounded text-xs text-slate-500 bg-slate-50" value={form.logo_path} readOnly placeholder="이미지 선택..." />
-                        <button
-                          onClick={() => handleSelectImage('logo_path')}
-                          className="bg-slate-600 text-white px-4 py-2 rounded text-xs font-bold flex items-center justify-center hover:bg-slate-700 transition-colors whitespace-nowrap"
-                        >
-                          찾기
-                        </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-6 bg-slate-50 rounded-3xl border border-slate-200">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5">회사 로고 (Company Logo)</label>
+                      <div className="flex gap-2">
+                        <input className="flex-1 bg-white border border-slate-200 p-3 rounded-2xl text-[11px] font-mono text-slate-500 truncate" value={form.logo_path} readOnly placeholder="이미지 파일 경로..." />
+                        <button onClick={() => handleSelectImage('logo_path')} className="px-4 py-2 bg-slate-800 text-white rounded-2xl text-[11px] font-black hover:bg-slate-900 transition-all shadow-sm">찾기</button>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1.5">직인/도장 (서명란)</label>
-                      <div className="flex gap-2 h-9">
-                        <input className="flex-1 border p-2 rounded text-xs text-slate-500 bg-slate-50" value={form.seal_path} readOnly placeholder="이미지 선택..." />
-                        <button
-                          onClick={() => handleSelectImage('seal_path')}
-                          className="bg-slate-600 text-white px-4 py-2 rounded text-xs font-bold flex items-center justify-center hover:bg-slate-700 transition-colors whitespace-nowrap"
-                        >
-                          찾기
-                        </button>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5">법인 직인 (Seal/Stamp)</label>
+                      <div className="flex gap-2">
+                        <input className="flex-1 bg-white border border-slate-200 p-3 rounded-2xl text-[11px] font-mono text-slate-500 truncate" value={form.seal_path} readOnly placeholder="이미지 파일 경로..." />
+                        <button onClick={() => handleSelectImage('seal_path')} className="px-4 py-2 bg-slate-800 text-white rounded-2xl text-[11px] font-black hover:bg-slate-900 transition-all shadow-sm">찾기</button>
                       </div>
                     </div>
                   </div>
                 </Card>
-              </Section>
 
-              {/* [New] Default Terms Section */}
-              <Section title="견적서 발행 조건 기본값 (Default Terms)">
-                <Card>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div><FormattedInput label="기본 결제 조건 (Payment)" value={form.default_payment_terms} onChange={val => updateForm('default_payment_terms', val)} placeholder="예: 50% 선금, 50% 인도 전" /></div>
-                      <div><FormattedInput label="기본 인도 조건 (Incoterms)" value={form.default_incoterms} onChange={val => updateForm('default_incoterms', val)} placeholder="예: EXW, FOB Busan" /></div>
+                <Card className="shadow-smooth rounded-3xl border-0 overflow-hidden">
+                  <div className="flex items-center gap-3 mb-8 pb-3 border-b border-slate-50">
+                    <span className="p-2 bg-brand-50 rounded-xl text-lg">💡</span>
+                    <h3 className="font-black text-slate-700 uppercase tracking-tight">발행 조건 기본 문구 (Default Terms)</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <FormattedInput label="기본 결제 조건" value={form.default_payment_terms} onChange={val => updateForm('default_payment_terms', val)} placeholder="예: 인도 후 30일 이내 송금" />
+                      <FormattedInput label="기본 인도 조건" value={form.default_incoterms} onChange={val => updateForm('default_incoterms', val)} placeholder="예: EXW, FOB" />
+                      <FormattedInput label="기본 납기" value={form.default_delivery_period} onChange={val => updateForm('default_delivery_period', val)} placeholder="예: 발주 후 2주 이내" />
+                      <FormattedInput label="기본 인도 장소" value={form.default_destination} onChange={val => updateForm('default_destination', val)} placeholder="예: 귀사 지정 장소" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div><FormattedInput label="기본 납기 (Delivery)" value={form.default_delivery_period} onChange={val => updateForm('default_delivery_period', val)} placeholder="예: 발주 후 2-3주" /></div>
-                      <div><FormattedInput label="기본 도착지 (Destination)" value={form.default_destination} onChange={val => updateForm('default_destination', val)} placeholder="예: 귀사 지정 장소" /></div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">기본 비고 (Note)</label>
+                    <div className="flex flex-col">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1">기본 비고 사항 (Notes)</label>
                       <textarea
-                        className="w-full border p-2 rounded h-24 text-sm bg-slate-50 focus:bg-white transition-colors"
+                        className="flex-1 w-full border border-slate-200 p-4 rounded-3xl text-sm font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brand-50 transition-all outline-none resize-none min-h-[150px]"
                         value={form.default_note}
                         onChange={e => updateForm('default_note', e.target.value)}
-                        placeholder="모든 견적서에 기본으로 들어갈 비고 문구를 입력하세요."
+                        placeholder="모든 견적서에 공통으로 표시될 안내 문구입니다."
                       />
                     </div>
                   </div>
                 </Card>
-              </Section>
 
-              <Section
-                title="엑셀 내보내기 양식 (Preset)"
-                rightElement={
-                  <div className="flex gap-2 items-center">
-                    <input
-                      className="border px-3 py-1.5 rounded text-sm focus:ring-2 focus:ring-green-500 focus:outline-none w-40"
-                      placeholder="새 양식 이름"
-                      value={newPresetName}
-                      onChange={e => setNewPresetName(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={handleAddPreset}
-                    >
-                      + 추가
-                    </Button>
+                <Card className="shadow-smooth rounded-3xl border-0">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-3 border-b border-slate-50">
+                    <div className="flex items-center gap-3">
+                      <span className="p-2 bg-emerald-50 rounded-xl text-lg">📊</span>
+                      <div>
+                        <h3 className="font-black text-slate-700 uppercase tracking-tight">엑셀 내보내기 프리셋 (Excel Presets)</h3>
+                        <p className="text-[10px] font-bold text-slate-400">데이터 내보내기 양식을 관리합니다.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        className="border border-slate-200 px-4 py-2 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-100 w-40"
+                        placeholder="새 양식 이름"
+                        value={newPresetName}
+                        onChange={e => setNewPresetName(e.target.value)}
+                      />
+                      <button
+                        onClick={handleAddPreset}
+                        className="bg-emerald-600 text-white px-5 py-2 rounded-2xl text-xs font-black shadow-inner hover:bg-emerald-700 transition-all"
+                      >
+                        + 추가
+                      </button>
+                    </div>
                   </div>
-                }
-              >
-                <Card>
-                  <div className="space-y-8">
-                    {excelPresets.length === 0 && <p className="text-slate-400 text-center py-4">등록된 양식이 없습니다.</p>}
+
+                  <div className="space-y-10">
+                    {excelPresets.length === 0 && (
+                      <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 font-bold">
+                        등록된 엑셀 양식이 없습니다. 우측 상단에서 새로 추가해보세요.
+                      </div>
+                    )}
                     {excelPresets.map(preset => (
-                      <div key={preset.id} className="border rounded-lg p-5 bg-slate-50">
-                        <div className="flex justify-between items-center mb-4">
-                          <span className="font-bold text-lg text-slate-800">📌 {preset.name}</span>
-                          <Button
-                            variant="danger"
-                            size="sm"
+                      <div key={preset.id} className="group relative bg-white border border-slate-100 rounded-[32px] p-6 shadow-smooth transition-all hover:border-brand-200">
+                        <div className="flex justify-between items-center mb-6">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">📌</span>
+                            <h4 className="font-black text-xl text-slate-800 tracking-tight">{preset.name}</h4>
+                            <span className="px-2 py-0.5 bg-brand-50 text-brand-600 text-[10px] font-black rounded-lg border border-brand-100">{preset.columns.length} columns</span>
+                          </div>
+                          <button
                             onClick={() => handleDeletePreset(preset.id)}
-                            className="h-[28px] opacity-70 hover:opacity-100"
+                            className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
                           >
-                            🗑️
-                          </Button>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </button>
                         </div>
 
-                        <div className="flex gap-4 h-64">
-                          {/* 왼쪽: 사용 가능한 컬럼 */}
-                          <div className="flex-1 flex flex-col border rounded bg-white overflow-hidden">
-                            <div className="bg-slate-100 p-2 text-xs font-bold text-slate-500 border-b text-center">사용 가능 항목 (클릭하여 추가)</div>
-                            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr,40px,1fr] gap-4">
+                          {/* Available Columns */}
+                          <div className="flex flex-col bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden min-h-[300px]">
+                            <div className="bg-slate-100/50 p-3 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center border-b">Available Items</div>
+                            <div className="p-3 space-y-1.5 overflow-y-auto max-h-[400px]">
                               {EXCEL_AVAILABLE_COLUMNS.filter(col => !preset.columns.includes(col.id)).map(col => (
                                 <button
                                   key={col.id}
                                   onClick={() => addColumnToPreset(preset.id, col.id)}
-                                  className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-green-50 hover:text-green-700 rounded border border-transparent hover:border-green-200 transition-colors"
+                                  className="w-full text-left px-4 py-2.5 bg-white rounded-xl text-xs font-bold text-slate-600 border border-slate-100 shadow-sm hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 transition-all flex items-center justify-between"
                                 >
-                                  + {col.label}
+                                  <span>{col.label}</span>
+                                  <span className="text-xl font-light opacity-30">+</span>
                                 </button>
                               ))}
-                              {EXCEL_AVAILABLE_COLUMNS.filter(col => !preset.columns.includes(col.id)).length === 0 && (
-                                <div className="text-center text-xs text-slate-300 py-4">모두 선택됨</div>
-                              )}
                             </div>
                           </div>
 
-                          {/* 가운데 화살표 */}
-                          <div className="flex flex-col justify-center items-center text-slate-400">
-                            <span>➡</span>
+                          <div className="flex items-center justify-center opacity-20 hidden md:flex">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                            </svg>
                           </div>
 
-                          {/* 오른쪽: 선택된 컬럼 (순서 변경 가능) */}
-                          <div className="flex-1 flex flex-col border rounded bg-white overflow-hidden border-green-200">
-                            <div className="bg-green-100 p-2 text-xs font-bold text-green-800 border-b border-green-200 text-center">선택된 항목 (드래그로 순서 변경)</div>
-                            <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-green-50/30">
+                          {/* Selected Columns */}
+                          <div className="flex flex-col bg-brand-50/20 rounded-2xl border border-brand-100 overflow-hidden min-h-[300px]">
+                            <div className="bg-brand-100/30 p-3 text-[10px] font-black text-brand-700 uppercase tracking-widest text-center border-b border-brand-100">Selected Items (Drag to Sort)</div>
+                            <div className="p-3 space-y-1.5 overflow-y-auto max-h-[400px]">
                               {preset.columns.map((colId, index) => {
                                 const colDef = EXCEL_AVAILABLE_COLUMNS.find(c => c.id === colId);
                                 return (
@@ -660,26 +716,16 @@ export function Settings() {
                                     onDragStart={(e) => onDragStart(e, index)}
                                     onDragOver={onDragOver}
                                     onDrop={(e) => onDrop(e, preset.id, index)}
-                                    className="flex justify-between items-center px-3 py-2 bg-white border border-slate-200 rounded shadow-sm cursor-move hover:border-blue-400 transition-colors"
+                                    className="flex items-center justify-between px-4 py-2.5 bg-white rounded-xl text-xs font-black text-slate-700 border border-slate-200 shadow-soft cursor-move hover:ring-2 hover:ring-brand-200 transition-all group/item"
                                   >
-                                    <span className="text-sm font-bold text-slate-700">
-                                      <span className="text-slate-300 mr-2">☰</span>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-slate-300 group-hover/item:text-brand-400">☰</span>
                                       {colDef?.label || colId}
-                                    </span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => removeColumnFromPreset(preset.id, colId)}
-                                      className="h-[24px] w-[24px] p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                    >
-                                      ✕
-                                    </Button>
+                                    </div>
+                                    <button onClick={() => removeColumnFromPreset(preset.id, colId)} className="text-slate-300 hover:text-red-500 font-bold px-2 py-1">✕</button>
                                   </div>
                                 );
                               })}
-                              {preset.columns.length === 0 && (
-                                <div className="text-center text-xs text-red-300 py-4">항목을 추가해주세요</div>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -687,34 +733,48 @@ export function Settings() {
                     ))}
                   </div>
                 </Card>
-              </Section>
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* [탭 3] 할인율 정책 */}
-          {activeTab === 'discount' && (
-            <Section title="할인율 정책" className="max-w-4xl mx-auto">
-              <Card>
-                <div className="space-y-6">
-                  <div className="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
-                    <h4 className="font-bold text-blue-800 mb-1">💡 인터랙티브 할인율 정책</h4>
-                    <p className="text-sm text-blue-700">각 난이도별(A~F) 수량에 따른 할인율을 그래프의 점을 <strong>드래그</strong>하여 설정하세요.</p>
+            {/* [탭 3] 할인율 정책 */}
+            {activeTab === 'discount' && (
+              <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <Card className="shadow-smooth rounded-3xl border-0 overflow-hidden">
+                  <div className="flex items-center gap-3 mb-8 pb-3 border-b border-slate-50">
+                    <span className="p-2 bg-brand-50 rounded-xl text-lg">📊</span>
+                    <h3 className="font-black text-slate-700 uppercase tracking-tight">할인율 정책 설정 (Discount Policy)</h3>
                   </div>
-                  <DiscountPolicyChart policyData={form.discount_policy} onChange={handlePolicyChange} />
-                </div>
-              </Card>
-            </Section>
-          )}
 
-          {/* [탭 4] 사용자 관리 */}
-          {activeTab === 'users' && isAdmin && (
-            <Section title="사용자 관리" className="max-w-4xl mx-auto">
-              <UserManagement />
-            </Section>
-          )}
+                  <div className="bg-brand-600 text-white p-6 rounded-3xl shadow-glow mb-8 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="space-y-1">
+                      <h4 className="text-xl font-black tracking-tight flex items-center gap-2">
+                        💡 인터랙티브 보정 계수
+                      </h4>
+                      <p className="text-sm text-brand-100 font-bold opacity-80">복수 수량 및 품목 난이도에 따른 단가 보정 계수를 그래프로 관리하세요.</p>
+                    </div>
+                    <ul className="text-xs space-y-1 bg-white/10 p-4 rounded-2xl border border-white/10 font-bold list-disc pl-8">
+                      <li>그래프의 포인트를 드래그하여 수치 변경</li>
+                      <li>난이도(A~F)별 개별 커브 지원</li>
+                      <li>저장 시 견적 산출 로직에 즉시 반영</li>
+                    </ul>
+                  </div>
 
+                  <div className="p-4 bg-slate-50 rounded-[32px] border border-slate-100 shadow-inner">
+                    <DiscountPolicyChart policyData={form.discount_policy} onChange={handlePolicyChange} />
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* [탭 4] 사용자 관리 */}
+            {activeTab === 'users' && isAdmin && (
+              <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <UserManagement />
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 }

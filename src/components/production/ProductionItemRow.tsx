@@ -1,12 +1,14 @@
 import { Button } from '../common/ui/Button';
 
+import { ExtendedProductionItem } from '../../pages/ProductionManagement';
+
 interface ProductionItemRowProps {
-    item: any;
-    viewStatus: 'ACTIVE' | 'PROCESSING' | 'DONE';
+    item: ExtendedProductionItem;
+    viewStatus: 'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE';
     isSelected: boolean;
     onToggleSelection: () => void;
     onStart: () => void;
-    onComplete: (date: string, note: string) => void; // date, note will be passed when implemented
+    onComplete: (date: string, note: string) => void; // 일자, 비고는 구현 시 전달됨
     onNavigate: (page: string, id?: string) => void;
     onUndo: () => void;
     onPreviewFile: (path: string) => void;
@@ -76,7 +78,7 @@ export function ProductionItemRow({
                 </div>
             </td>
             <td className="px-5 py-4 text-center">
-                {/* Process Steps Visualizer could go here */}
+                {/* 공정 단계 시각화 도구가 여기에 포함될 수 있음 */}
                 <span className="text-xs text-slate-400">-</span>
             </td>
             <td className="px-5 py-4 text-center">
@@ -102,7 +104,7 @@ export function ProductionItemRow({
             <td className="px-5 py-4 text-center">
                 <div className="flex flex-col gap-1 items-center">
                     {item.files && item.files.length > 0 ? (
-                        item.files.map((f: any) => {
+                        item.files.map((f) => {
                             const ext = f.file_name.split('.').pop()?.toLowerCase();
                             const is2D = ['pdf', 'dwg', 'dxf'].includes(ext);
                             const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(ext);
@@ -124,29 +126,29 @@ export function ProductionItemRow({
                     )}
                 </div>
             </td>
-            <td className="px-5 py-4 text-center">
-                <div className="flex justify-center">
-                    {viewStatus === 'ACTIVE' && (
+            <td className="px-5 py-4 text-center whitespace-nowrap">
+                <div className="flex justify-center items-center gap-2">
+                    {(viewStatus === 'ACTIVE' || (viewStatus === 'ALL' && item.process_status === 'WAITING')) && (
                         <Button
                             size="sm"
                             variant="glass"
                             className="text-xs h-8"
                             onClick={onStart}
                         >
-                            ▶ 시작
+                            ▶️ 시작
                         </Button>
                     )}
-                    {viewStatus === 'PROCESSING' && (
+                    {(viewStatus === 'PROCESSING' || (viewStatus === 'ALL' && item.process_status === 'PROCESSING')) && (
                         <Button
                             size="sm"
                             variant="primary"
                             className="text-xs h-8 shadow-glow"
-                            onClick={() => onComplete('', '')} // Open modal usually handled by parent
+                            onClick={() => onComplete('', '')} // 모달 열기는 보통 부모에서 처리됨
                         >
-                            ✨ 완료
+                            ✅ 완료
                         </Button>
                     )}
-                    {viewStatus === 'DONE' && (
+                    {(viewStatus === 'DONE' || (viewStatus === 'ALL' && item.process_status === 'DONE')) && (
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
                                 완료됨

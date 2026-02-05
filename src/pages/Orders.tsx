@@ -7,9 +7,10 @@ import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { TabFilter } from '../components/common/ui/TabFilter';
 import { Pagination } from '../components/common/ui/Pagination';
+import { Order } from '../types/order';
 
 export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
-    const [orders, setOrders] = useState<any[]>([]);
+    const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const { profile } = useProfile();
 
@@ -53,8 +54,7 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
             if (filters.endDate) query = query.lte('order_date', `${filters.endDate}T23:59:59`);
 
             if (filters.keyword) {
-                // [Fix] Cross-table OR search workaround needed for PostgREST
-                // 1. Find matching clients
+                // Find matching clients
                 const { data: matchedClients } = await supabase
                     .from('clients')
                     .select('id')
@@ -63,7 +63,7 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
 
                 const clientIds = matchedClients?.map(c => c.id) || [];
 
-                // 2. Build OR condition: po_no LIKE keyword OR client_id IN (...)
+                // Build OR condition
                 let orConditions = `po_no.ilike.%${filters.keyword}%`;
                 if (clientIds.length > 0) {
                     orConditions += `,client_id.in.(${clientIds.join(',')})`;
@@ -112,9 +112,10 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
 
             alert('삭제되었습니다.');
             fetchOrders();
-        } catch (error: any) {
+        } catch (error) {
             console.error('삭제 중 오류:', error);
-            alert('삭제 실패: ' + (error.message || '알 수 없는 오류'));
+            const message = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+            alert('삭제 실패: ' + message);
         }
     };
 
@@ -126,7 +127,7 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
         <div className="h-full flex flex-col bg-slate-50 relative">
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
                 <PageHeader
-                    title="📦 수주 관리 (Orders)"
+                    title="📦 수주 관리"
                     actions={
                         <Button
                             variant="primary"
@@ -138,11 +139,9 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                     }
                 />
 
-                {/* 필터 및 검색 */}
                 <Section>
                     <Card className="p-4">
                         <div className="flex flex-col gap-4">
-                            {/* 상단 탭 필터 (Status Tab Filter) */}
                             <div className="w-full">
                                 <TabFilter
                                     options={[
@@ -155,21 +154,19 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                                     onChange={(val) => setFilters({ ...filters, status: val, page: 1 })}
                                 />
                             </div>
-
-                            {/* 하단 검색 및 날짜 필터 (Search & Date) */}
                             <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
                                 <div className="w-full md:w-auto flex-1">
                                     <input
-                                        className="w-full border p-2 rounded-lg text-sm flex-1 md:w-64 min-w-0 outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-slate-400"
+                                        className="w-full border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 bg-slate-50 hover:bg-white transition-all placeholder:text-slate-400"
                                         placeholder="PO번호 / 거래처명 검색"
                                         value={filters.keyword}
                                         onChange={e => setFilters({ ...filters, keyword: e.target.value, page: 1 })}
                                     />
                                 </div>
                                 <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                                    <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
-                                    <span className="text-slate-400">~</span>
-                                    <input type="date" className="border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-100 text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
+                                    <input type="date" className="border border-slate-200 p-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 text-slate-600 bg-slate-50" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
+                                    <span className="text-slate-400 font-bold">~</span>
+                                    <input type="date" className="border border-slate-200 p-2 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 text-slate-600 bg-slate-50" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
                                 </div>
                             </div>
                         </div>
@@ -177,57 +174,62 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                 </Section>
 
                 <Section title={`수주 목록 (${totalCount}건)`}>
-                    <Card noPadding className="overflow-hidden">
-                        {/* Desktop Table */}
+                    <Card noPadding className="overflow-hidden shadow-soft rounded-2xl border-0">
                         <div className="hidden md:block overflow-x-auto">
-                            <table className="min-w-full divide-y divide-slate-200">
-                                <thead className="bg-slate-50">
+                            <table className="min-w-full divide-y divide-slate-100 relative border-collapse">
+                                <thead className="bg-slate-50/80 sticky top-0 z-10 font-black text-slate-400 uppercase tracking-widest text-[10px]">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">수주일자</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">상태</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">PO No.</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">거래처</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">납기일</th>
-                                        <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">금액</th>
-                                        <th className="px-6 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">관리</th>
+                                        <th className="px-6 py-4 text-left">수주일자</th>
+                                        <th className="px-6 py-4 text-left">상태</th>
+                                        <th className="px-6 py-4 text-left">PO No.</th>
+                                        <th className="px-6 py-4 text-left">거래처</th>
+                                        <th className="px-6 py-4 text-left">납기일</th>
+                                        <th className="px-6 py-4 text-right">금액</th>
+                                        <th className="px-6 py-4 text-center">관리</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-slate-200">
+                                <tbody className="bg-white divide-y divide-slate-50">
                                     {loading ? (
-                                        <tr><td colSpan={7} className="text-center py-20 text-slate-400">로딩 중...</td></tr>
+                                        <tr><td colSpan={7} className="text-center py-20 text-slate-400 animate-pulse font-medium">로딩 중...</td></tr>
                                     ) : orders.length === 0 ? (
-                                        <tr><td colSpan={7} className="text-center py-20 text-slate-400">수주 내역이 없습니다.</td></tr>
+                                        <tr><td colSpan={7} className="text-center py-20 text-slate-400 font-medium">수주 내역이 없습니다. 리스트를 확인해 보세요.</td></tr>
                                     ) : (
                                         orders.map((ord) => (
-                                            <tr key={ord.id} className="hover:bg-blue-50/50 cursor-pointer transition-colors" onClick={() => handleOpenDetail(ord.id)}>
-                                                <td className="px-6 py-4 text-sm text-slate-500">{new Date(ord.order_date).toLocaleDateString()}</td>
+                                            <tr key={ord.id} className="hover:bg-slate-50/80 cursor-pointer transition-all group" onClick={() => handleOpenDetail(ord.id)}>
+                                                <td className="px-6 py-4 text-sm text-slate-500 font-medium">{new Date(ord.order_date).toLocaleDateString()}</td>
                                                 <td className="px-6 py-4">
                                                     <StatusBadge status={ord.status} />
                                                 </td>
-                                                <td className="px-6 py-4 text-sm font-bold text-blue-600">{ord.po_no}</td>
-                                                <td className="px-6 py-4 text-sm font-bold text-slate-700">{ord.clients?.name}</td>
-                                                <td className="px-6 py-4 text-sm text-slate-700">{new Date(ord.delivery_date).toLocaleDateString()}</td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <span className="text-sm font-bold text-slate-700">{ord.currency} {ord.total_amount?.toLocaleString()}</span>
+                                                <td className="px-6 py-4 text-sm font-black text-brand-600 tracking-tight">{ord.po_no}</td>
+                                                <td className="px-6 py-4 text-sm font-bold text-slate-800">{ord.clients?.name}</td>
+                                                <td className="px-6 py-4 text-sm text-slate-600 font-mono">
+                                                    <span className={new Date(ord.delivery_date) < new Date() && ord.status !== 'DONE' ? 'text-red-500 font-bold' : ''}>
+                                                        {new Date(ord.delivery_date).toLocaleDateString()}
+                                                    </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <div className="flex justify-center gap-2">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="secondary"
+                                                <td className="px-6 py-4 text-right">
+                                                    <span className="text-sm font-black text-slate-800">{ord.currency} {ord.total_amount?.toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex justify-center gap-1.5">
+                                                        <button
                                                             onClick={(e) => { e.stopPropagation(); handleOpenDetail(ord.id); }}
-                                                            className="h-[28px] opacity-70 hover:opacity-100"
+                                                            className="p-1.5 text-slate-400 hover:text-brand-600 hover:bg-white rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                            title="상세 수정"
                                                         >
-                                                            ✏️
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="danger"
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                            </svg>
+                                                        </button>
+                                                        <button
                                                             onClick={(e) => handleDeleteOrder(e, ord.id, ord.estimate_id)}
-                                                            className="h-[28px] opacity-70 hover:opacity-100"
+                                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                            title="수주 삭제"
                                                         >
-                                                            🗑️
-                                                        </Button>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -235,11 +237,6 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                                     )}
                                 </tbody>
                             </table>
-                        </div>
-
-                        {/* Mobile List Info */}
-                        <div className="md:hidden p-4 text-center text-sm text-slate-400 border-b border-slate-100">
-                            좌우로 스크롤하여 내용을 확인하세요.
                         </div>
 
                         {/* Pagination Component */}
@@ -256,34 +253,34 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                     {/* Mobile Card List */}
                     <div className="md:hidden space-y-3 mt-4">
                         {loading ? (
-                            <div className="text-center py-20 text-slate-400">로딩 중...</div>
+                            <div className="text-center py-20 text-slate-400 animate-pulse">로딩 중...</div>
                         ) : orders.length === 0 ? (
                             <div className="text-center py-20 text-slate-400">수주 내역이 없습니다.</div>
                         ) : (
                             orders.map((ord) => (
-                                <Card key={ord.id} onClick={() => handleOpenDetail(ord.id)} className="cursor-pointer active:bg-slate-50">
+                                <Card key={ord.id} onClick={() => handleOpenDetail(ord.id)} className="cursor-pointer active:bg-slate-50 border-slate-200">
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex flex-col gap-1">
                                             <StatusBadge status={ord.status} />
-                                            <span className="text-xs text-slate-400">{new Date(ord.order_date).toLocaleDateString()}</span>
+                                            <span className="text-[11px] text-slate-400 font-medium">{new Date(ord.order_date).toLocaleDateString()}</span>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-lg font-bold text-slate-800">{ord.currency} {ord.total_amount?.toLocaleString()}</div>
-                                            <div className="text-[10px] text-slate-400">납기: {new Date(ord.delivery_date).toLocaleDateString()}</div>
+                                            <div className="text-lg font-black text-brand-700 leading-none mb-1">{ord.currency} {ord.total_amount?.toLocaleString()}</div>
+                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">납기: {new Date(ord.delivery_date).toLocaleDateString()}</div>
                                         </div>
                                     </div>
                                     <div className="mb-3">
-                                        <h4 className="text-base font-bold text-blue-600 truncate">{ord.po_no}</h4>
-                                        <p className="text-sm text-slate-500 font-bold">{ord.clients?.name}</p>
+                                        <h4 className="text-base font-black text-slate-800 truncate tracking-tight">{ord.po_no}</h4>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-wide">{ord.clients?.name}</p>
                                     </div>
-                                    <div className="flex justify-end pt-2 border-t border-slate-50">
+                                    <div className="flex justify-end pt-2 border-t border-slate-50 gap-2">
                                         <Button
                                             size="sm"
-                                            variant="danger"
-                                            onClick={(e) => handleDeleteOrder(e, ord.id, ord.estimate_id)}
-                                            className="h-[32px] w-[32px] opacity-70 hover:opacity-100 flex items-center justify-center p-0"
+                                            variant="secondary"
+                                            onClick={(e) => { e.stopPropagation(); handleOpenDetail(ord.id); }}
+                                            className="h-[32px] px-3 font-bold"
                                         >
-                                            🗑️
+                                            상세
                                         </Button>
                                     </div>
                                 </Card>
@@ -298,15 +295,15 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
 
 function StatusBadge({ status }: { status: string }) {
     const config: Record<string, { label: string, classes: string }> = {
-        'ORDERED': { label: '🚀 수주접수', classes: 'bg-blue-100 text-blue-700' },
-        'PRODUCTION': { label: '⚙️ 생산중', classes: 'bg-orange-100 text-orange-700' },
-        'DONE': { label: '📦 출고완료', classes: 'bg-green-100 text-green-700' },
+        'ORDERED': { label: '🚀 수주접수', classes: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+        'PRODUCTION': { label: '⚙️ 생산중', classes: 'bg-orange-50 text-orange-700 border-orange-100' },
+        'DONE': { label: '📦 출고완료', classes: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
     };
 
-    const { label, classes } = config[status] || { label: status, classes: 'bg-slate-100 text-slate-600' };
+    const { label, classes } = config[status] || { label: status, classes: 'bg-slate-100 text-slate-600 border-slate-200' };
 
     return (
-        <span className={`px-2 py-0.5 text-[10px] md:text-xs font-bold rounded-full ${classes} whitespace-nowrap`}>
+        <span className={`px-2.5 py-1 text-[10px] md:text-xs font-black rounded-lg border shadow-sm ${classes} whitespace-nowrap`}>
             {label}
         </span>
     );
