@@ -285,7 +285,7 @@ function DashboardHome({ onNavigate }: { onNavigate: (page: string, id?: string)
                 </div>
               </div>
               <div className="flex-1 min-h-0">
-                <Line options={chartOptions} data={chartData} />
+                <Line data={chartData} options={chartOptions as any} />
               </div>
             </Card>
           </div>

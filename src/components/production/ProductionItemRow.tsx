@@ -105,7 +105,7 @@ export function ProductionItemRow({
                 <div className="flex flex-col gap-1 items-center">
                     {item.files && item.files.length > 0 ? (
                         item.files.map((f) => {
-                            const ext = f.file_name.split('.').pop()?.toLowerCase();
+                            const ext = f.file_name.split('.').pop()?.toLowerCase() || '';
                             const is2D = ['pdf', 'dwg', 'dxf'].includes(ext);
                             const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(ext);
                             return (

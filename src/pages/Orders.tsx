@@ -9,8 +9,12 @@ import { TabFilter } from '../components/common/ui/TabFilter';
 import { Pagination } from '../components/common/ui/Pagination';
 import { Order } from '../types/order';
 
+interface OrderWithClient extends Order {
+    clients?: { name: string };
+}
+
 export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
-    const [orders, setOrders] = useState<Order[]>([]);
+    const [orders, setOrders] = useState<OrderWithClient[]>([]);
     const [loading, setLoading] = useState(true);
     const { profile } = useProfile();
 
@@ -222,7 +226,7 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                                                             </svg>
                                                         </button>
                                                         <button
-                                                            onClick={(e) => handleDeleteOrder(e, ord.id, ord.estimate_id)}
+                                                            onClick={(e) => handleDeleteOrder(e, ord.id, ord.estimate_id || null)}
                                                             className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition-all shadow-sm border border-transparent hover:border-slate-100"
                                                             title="수주 삭제"
                                                         >

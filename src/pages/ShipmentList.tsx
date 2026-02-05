@@ -683,7 +683,7 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                 <div className="flex flex-col gap-1 items-center">
                     {item.files && item.files.length > 0 ? (
                         item.files.map((f) => {
-                            const ext = f.file_name.split('.').pop()?.toLowerCase();
+                            const ext = f.file_name.split('.').pop()?.toLowerCase() || '';
                             const is2D = ['pdf', 'dwg', 'dxf'].includes(ext);
                             const is3D = ['stp', 'step', 'igs', 'iges', 'x_t'].includes(ext);
                             return (
@@ -705,7 +705,7 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                 </div>
             </td>
 
-            {/* 5. Action */}
+            {/* 5. 액션 */}
             <td className="px-6 py-4">
                 {/* 출하 이력 */}
                 {isShipped && (
@@ -722,48 +722,45 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                     </div>
                 )}
 
-            </div>
-                )}
-
-            {/* 출하 실행 액션 */}
-            {(item.shipment_items?.reduce((s: number, x: { quantity: number }) => s + x.quantity, 0) || 0) < item.qty ? (
-                <div className="flex gap-2 items-end justify-end">
-                    <div className="flex flex-col gap-1 items-end">
-                        {item.process_status !== 'DONE' && (
-                            <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded border border-red-100 mb-1">
-                                ⚠️ 가공 미완료
-                            </span>
-                        )}
-                        <input
-                            type="date"
-                            className="border rounded px-2 py-1 text-sm w-28 border-slate-300"
-                            value={shipmentDate}
-                            onChange={(e) => setShipmentDate(e.target.value)}
+                {/* 출하 실행 액션 */}
+                {(item.shipment_items?.reduce((s: number, x: { quantity: number }) => s + x.quantity, 0) || 0) < item.qty ? (
+                    <div className="flex gap-2 items-end justify-end">
+                        <div className="flex flex-col gap-1 items-end">
+                            {item.process_status !== 'DONE' && (
+                                <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1 rounded border border-red-100 mb-1">
+                                    ⚠️ 가공 미완료
+                                </span>
+                            )}
+                            <input
+                                type="date"
+                                className="border rounded px-2 py-1 text-sm w-28 border-slate-300"
+                                value={shipmentDate}
+                                onChange={(e) => setShipmentDate(e.target.value)}
+                                disabled={item.process_status !== 'DONE'}
+                            />
+                        </div>
+                        <Button
+                            size="sm"
+                            className={`font-bold h-[30px] whitespace-nowrap ${item.process_status === 'DONE'
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                }`}
+                            onClick={() => {
+                                if (item.process_status === 'DONE') onComplete(item, shipmentDate);
+                                else alert('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
+                            }}
                             disabled={item.process_status !== 'DONE'}
-                        />
+                        >
+                            출하
+                        </Button>
                     </div>
-                    <Button
-                        size="sm"
-                        className={`font-bold h-[30px] whitespace-nowrap ${item.process_status === 'DONE'
-                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                            }`}
-                        onClick={() => {
-                            if (item.process_status === 'DONE') onComplete(item, shipmentDate);
-                            else alert('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
-                        }}
-                        disabled={item.process_status !== 'DONE'}
-                    >
-                        출하
-                    </Button>
-                </div>
-            ) : (
-                <div className="text-center">
-                    <span className="text-xs font-bold text-slate-400">출하 완료</span>
-                </div>
-            )}
-        </td>
-        </tr >
+                ) : (
+                    <div className="text-center">
+                        <span className="text-xs font-bold text-slate-400">출하 완료</span>
+                    </div>
+                )}
+            </td>
+        </tr>
     );
 }
 // 페이지네이션 컴포넌트

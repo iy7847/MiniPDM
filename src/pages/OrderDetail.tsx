@@ -178,7 +178,7 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
             <ClipboardMatchModal
                 isOpen={isClipboardModalOpen}
                 onClose={() => setIsClipboardModalOpen(false)}
-                onMatch={async (matches: { drawing_no: string; qty: number }[]) => {
+                onMatch={(matches: { part_no: string; po_no: string; qty: number; unit_price: number; due_date: string; }[]) => {
                     console.log('Clipboard matches:', matches);
                     setIsClipboardModalOpen(false);
                 }}

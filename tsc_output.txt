@@ -1,0 +1,23 @@
+src/components/production/ProductionItemRow.tsx(109,73): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/production/ProductionItemRow.tsx(110,89): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/Dashboard.tsx(288,23): error TS2322: Type '{ responsive: boolean; maintainAspectRatio: boolean; plugins: { legend: { display: boolean; }; title: { display: boolean; }; tooltip: { backgroundColor: string; titleColor: string; bodyColor: string; ... 4 more ...; callbacks: { ...; }; }; }; scales: { ...; }; interaction: { ...; }; }' is not assignable to type '_DeepPartialObject<CoreChartOptions<"line"> & ElementChartOptions<"line"> & PluginChartOptions<"line"> & DatasetChartOptions<"line"> & ScaleChartOptions<...> & LineControllerChartOptions>'.
+  The types of 'plugins.tooltip.callbacks.label' are incompatible between these types.
+    Type '(context: { parsed: { y: number; }; }) => string' is not assignable to type '(this: TooltipModel<"line">, tooltipItem: TooltipItem<"line">) => string | void | string[]'.
+      Types of parameters 'context' and 'tooltipItem' are incompatible.
+        Type 'TooltipItem<"line">' is not assignable to type '{ parsed: { y: number; }; }'.
+          The types of 'parsed.y' are incompatible between these types.
+            Type 'number | null' is not assignable to type 'number'.
+              Type 'null' is not assignable to type 'number'.
+src/pages/OrderDetail.tsx(181,17): error TS2322: Type '(matches: { drawing_no: string; qty: number; }[]) => Promise<void>' is not assignable to type '(matches: { part_no: string; po_no: string; qty: number; unit_price: number; due_date: string; }[], currency: string) => void'.
+  Types of parameters 'matches' and 'matches' are incompatible.
+    Type '{ part_no: string; po_no: string; qty: number; unit_price: number; due_date: string; }[]' is not assignable to type '{ drawing_no: string; qty: number; }[]'.
+      Property 'drawing_no' is missing in type '{ part_no: string; po_no: string; qty: number; unit_price: number; due_date: string; }' but required in type '{ drawing_no: string; qty: number; }'.
+src/pages/Orders.tsx(204,113): error TS2339: Property 'clients' does not exist on type 'Order'.
+src/pages/Orders.tsx(225,106): error TS2345: Argument of type 'string | null | undefined' is not assignable to parameter of type 'string | null'.
+  Type 'undefined' is not assignable to type 'string | null'.
+src/pages/Orders.tsx(274,118): error TS2339: Property 'clients' does not exist on type 'Order'.
+src/pages/Settings.tsx(763,76): error TS2322: Type '(newPolicy: typeof DEFAULT_POLICY) => void' is not assignable to type '(newPolicy: Record<string, number[]>) => void'.
+  Types of parameters 'newPolicy' and 'newPolicy' are incompatible.
+    Type 'Record<string, number[]>' is missing the following properties from type '{ A: number[]; B: number[]; C: number[]; D: number[]; E: number[]; F: number[]; }': 'A', 'B', 'C', 'D', and 2 more.

@@ -246,8 +246,8 @@ export function Settings() {
     setDraggedItemIndex(null);
   };
 
-  const handlePolicyChange = (newPolicy: typeof DEFAULT_POLICY) => {
-    setForm(prev => ({ ...prev, discount_policy: newPolicy }));
+  const handlePolicyChange = (newPolicy: Record<string, number[]>) => {
+    setForm(prev => ({ ...prev, discount_policy: newPolicy as any }));
   };
 
   const updateForm = (key: keyof typeof form, value: string | number | typeof DEFAULT_POLICY) => {
