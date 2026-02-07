@@ -6,6 +6,8 @@ import { Section } from '../components/common/ui/Section';
 import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { ShipmentLabelModal } from '../components/features/Shipment/ShipmentLabelModal';
+import { PromptModal } from '../components/common/PromptModal';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 import { useFileHandler } from '../hooks/useFileHandler';
 import { OrderItem } from '../types/order';
 import { ShipmentWithItems } from '../types/shipment';
@@ -64,6 +66,34 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
         pageSize: 20
     });
     const [totalCount, setTotalCount] = useState(0);
+
+    const [confirmConfig, setConfirmConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => { }
+    });
+
+    const [promptConfig, setPromptConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        defaultValue: string;
+        type: string;
+        onSubmit: (value: string) => void;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        defaultValue: '',
+        type: 'text',
+        onSubmit: () => { }
+    });
 
     useEffect(() => {
         if (profile?.company_id) {
@@ -184,87 +214,97 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
     };
 
     const handleUpdateDeliveryDate = async (orderId: string, newDate: string) => {
-        if (!confirm("납기일을 수정하시겠습니까? (동일 수주 건의 모든 품목에 적용됩니다)")) return;
+        setConfirmConfig({
+            isOpen: true,
+            title: "납기일 수정",
+            message: "납기일을 수정하시겠습니까? (동일 수주 건의 모든 품목에 적용됩니다)",
+            onConfirm: async () => {
+                const { error } = await supabase
+                    .from('orders')
+                    .update({ delivery_date: newDate })
+                    .eq('id', orderId);
 
-        const { error } = await supabase
-            .from('orders')
-            .update({ delivery_date: newDate })
-            .eq('id', orderId);
-
-        if (!error) {
-            // 이 주문에 속한 모든 품목에 대해 낙관적 업데이트 수행
-            setItems(prev => prev.map(i => i.orders.id === orderId ? { ...i, orders: { ...i.orders, delivery_date: newDate } } : i));
-        } else {
-            alert("납기일 수정 중 오류가 발생했습니다.");
-        }
+                if (!error) {
+                    setItems(prev => prev.map(i => i.orders.id === orderId ? { ...i, orders: { ...i.orders, delivery_date: newDate } } : i));
+                } else {
+                    alert("납기일 수정 중 오류가 발생했습니다.");
+                }
+            }
+        });
     };
 
     const handleCompleteShipment = async (item: ExtendedOrderItem, shipmentDate: string) => {
-        if (!confirm(`[${item.part_no}] 품목을 출하 처리하시겠습니까?`)) return;
+        setConfirmConfig({
+            isOpen: true,
+            title: "출하 처리 확인",
+            message: `[${item.part_no}] 품목을 출하 처리하시겠습니까?`,
+            onConfirm: async () => {
+                try {
+                    const { data: existingShipments } = await supabase
+                        .from('shipment_items')
+                        .select('quantity')
+                        .eq('order_item_id', item.id);
 
-        try {
-            // [수정] 부분 출하 로직
-            // 이미 출하된 수량 계산
-            const { data: existingShipments } = await supabase
-                .from('shipment_items')
-                .select('quantity')
-                .eq('order_item_id', item.id);
+                    const shippedQty = existingShipments?.reduce((sum, s) => sum + s.quantity, 0) || 0;
+                    const remainingQty = item.qty - shippedQty;
 
-            const shippedQty = existingShipments?.reduce((sum, s) => sum + s.quantity, 0) || 0;
-            const remainingQty = item.qty - shippedQty;
+                    if (remainingQty <= 0) return alert('이미 전체 수량이 출하되었습니다.');
 
-            if (remainingQty <= 0) return alert('이미 전체 수량이 출하되었습니다.');
+                    setPromptConfig({
+                        isOpen: true,
+                        title: "출하 수량 입력",
+                        message: `출하할 수량을 입력하세요.\n(남은 수량: ${remainingQty} / 전체: ${item.qty})`,
+                        defaultValue: remainingQty.toString(),
+                        type: 'number',
+                        onSubmit: async (inputQtyStr) => {
+                            if (!inputQtyStr) return;
 
-            const inputQtyStr = prompt(`출하할 수량을 입력하세요.\n(남은 수량: ${remainingQty} / 전체: ${item.qty})`, remainingQty.toString());
-            if (!inputQtyStr) return;
+                            const inputQty = parseInt(inputQtyStr, 10);
+                            if (isNaN(inputQty) || inputQty <= 0) return alert('유효한 수량을 입력해주세요.');
+                            if (inputQty > remainingQty) return alert(`남은 수량(${remainingQty})보다 많이 출하할 수 없습니다.`);
 
-            const inputQty = parseInt(inputQtyStr, 10);
-            if (isNaN(inputQty) || inputQty <= 0) return alert('유효한 수량을 입력해주세요.');
-            if (inputQty > remainingQty) return alert(`남은 수량(${remainingQty})보다 많이 출하할 수 없습니다.`);
+                            const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
+                            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                            const shipmentNo = `SH${today}-${random}`;
 
-            // 1. 출하 레코드 생성 (현재는 작업당 하나의 출하)
-            const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
-            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            const shipmentNo = `SH${today}-${random}`; // 예: SH240104-123
+                            const { data: shipment, error: shipError } = await supabase
+                                .from('shipments')
+                                .insert({
+                                    company_id: profile?.company_id,
+                                    order_id: item.orders.id,
+                                    shipment_no: shipmentNo,
+                                    status: 'shipped',
+                                    recipient_name: item.orders.clients?.name,
+                                    shipped_at: new Date(shipmentDate).toISOString()
+                                })
+                                .select()
+                                .single();
 
-            const { data: shipment, error: shipError } = await supabase
-                .from('shipments')
-                .insert({
-                    company_id: profile?.company_id,
-                    order_id: item.orders.id,
-                    shipment_no: shipmentNo,
-                    status: 'shipped',
-                    recipient_name: item.orders.clients?.name,
-                    shipped_at: new Date(shipmentDate).toISOString()
-                })
-                .select()
-                .single();
+                            if (shipError) throw shipError;
 
-            if (shipError) throw shipError;
+                            const { error: itemError } = await supabase
+                                .from('shipment_items')
+                                .insert({
+                                    company_id: profile?.company_id,
+                                    shipment_id: shipment.id,
+                                    order_item_id: item.id,
+                                    quantity: inputQty
+                                });
 
-            // 2. 출하 품목 생성
-            const { error: itemError } = await supabase
-                .from('shipment_items')
-                .insert({
-                    company_id: profile?.company_id,
-                    shipment_id: shipment.id,
-                    order_item_id: item.id,
-                    quantity: inputQty // [수정] 입력된 수량 사용
-                });
+                            if (itemError) throw itemError;
 
-            if (itemError) throw itemError;
-
-            alert("출하가 완료되었습니다.");
-
-            // [신규] 주문의 모든 품목이 출하되었는지 확인 후 주문 상태를 'DONE'으로 업데이트
-            await checkAndCompleteOrder(item.orders.id);
-
-            fetchItems(); // 새로고침
-        } catch (e) {
-            console.error(e);
-            const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
-            alert("출하 처리 중 오류가 발생했습니다: " + message);
-        }
+                            alert("출하가 완료되었습니다.");
+                            await checkAndCompleteOrder(item.orders.id);
+                            fetchItems();
+                        }
+                    });
+                } catch (e) {
+                    console.error(e);
+                    const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
+                    alert("출하 처리 중 오류가 발생했습니다: " + message);
+                }
+            }
+        });
     };
 
     const checkAndCompleteOrder = async (orderId: string) => {
@@ -301,19 +341,20 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
     };
 
     const handleCancelShipment = async (shipmentItemId: string) => {
-        if (!confirm("출하를 취소(삭제) 하시겠습니까?")) return;
+        setConfirmConfig({
+            isOpen: true,
+            title: "출하 취소 확인",
+            message: "출하를 취소(삭제) 하시겠습니까?",
+            onConfirm: async () => {
+                const { error } = await supabase.from('shipment_items').delete().eq('id', shipmentItemId);
 
-        const { error } = await supabase.from('shipment_items').delete().eq('id', shipmentItemId);
-
-        if (!error) {
-            // 상태 다시 확인 (출하를 취소한 경우 주문이 다시 PRODUCTION으로 돌아가야 할 수도 있음)
-            // 여기서는 orderId가 없으므로 항목을 다시 가져오거나 별도의 확인을 구현해야 함.
-            // 이상적으로는 주문 상태를 다시 'PRODUCTION' 등으로 업데이트해야 함.
-            // 현재는 그냥 새로고침만 수행.
-            fetchItems();
-        } else {
-            alert("취소 실패: " + error.message);
-        }
+                if (!error) {
+                    fetchItems();
+                } else {
+                    alert("취소 실패: " + error.message);
+                }
+            }
+        });
     };
 
     // [신규] 일괄 출하
@@ -321,84 +362,87 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
         const selectedIds = Array.from(selectedItemIds);
         if (selectedIds.length === 0) return alert('선택된 품목이 없습니다.');
 
-        // 미출하 품목 필터링
         const targetItems = items.filter(i => selectedIds.includes(i.id) && (!i.shipment_items || i.shipment_items.length === 0));
 
         if (targetItems.length === 0) return alert('선택된 품목 중 출하 가능한(미출하) 품목이 없습니다.');
 
-        const shipDateVal = prompt("일괄 출하 일자를 입력하세요 (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
-        if (!shipDateVal) return;
+        setPromptConfig({
+            isOpen: true,
+            title: "일괄 출하 일자 입력",
+            message: "일괄 출하 일자를 입력하세요 (YYYY-MM-DD):",
+            defaultValue: new Date().toISOString().slice(0, 10),
+            type: 'date',
+            onSubmit: (shipDateVal) => {
+                if (!shipDateVal) return;
 
-        if (!confirm(`선택한 ${targetItems.length}개 품목을 일괄 출하 처리하시겠습니까?\n(동일 수주 건별로 전표가 생성됩니다)`)) return;
+                setConfirmConfig({
+                    isOpen: true,
+                    title: "일괄 출하 확인",
+                    message: `선택한 ${targetItems.length}개 품목을 일괄 출하 처리하시겠습니까?\n(동일 수주 건별로 전표가 생성됩니다)`,
+                    onConfirm: async () => {
+                        setLoading(true);
+                        try {
+                            const groups: { [orderId: string]: ExtendedOrderItem[] } = {};
+                            targetItems.forEach(item => {
+                                const oid = item.orders.id;
+                                if (!groups[oid]) groups[oid] = [];
+                                groups[oid].push(item);
+                            });
 
-        setLoading(true);
-        try {
-            // 주문 ID별로 그룹화 (출하 테이블은 일반적으로 주문과 연결됨)
-            // 다중 주문 출하를 지원하려면 order_id가 nullable인지 확인하거나 로직을 다르게 처리해야 함.
-            // 안전을 위해 주문 ID별로 그룹화함.
-            const groups: { [orderId: string]: ExtendedOrderItem[] } = {};
-            targetItems.forEach(item => {
-                const oid = item.orders.id;
-                if (!groups[oid]) groups[oid] = [];
-                groups[oid].push(item);
-            });
+                            let processedGroups = 0;
 
+                            for (const orderId of Object.keys(groups)) {
+                                const groupItems = groups[orderId];
+                                const clientName = groupItems[0]?.orders?.clients?.name;
 
-            let processedGroups = 0;
+                                const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
+                                const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                                const shipmentNo = `SH${today}-${random}-${processedGroups + 1}`;
 
-            // 각 그룹 처리
-            for (const orderId of Object.keys(groups)) {
-                const groupItems = groups[orderId];
-                const clientName = groupItems[0]?.orders?.clients?.name;
+                                const { data: shipment, error: shipError } = await supabase
+                                    .from('shipments')
+                                    .insert({
+                                        company_id: profile?.company_id,
+                                        order_id: orderId,
+                                        shipment_no: shipmentNo,
+                                        status: 'shipped',
+                                        recipient_name: clientName,
+                                        shipped_at: new Date(shipDateVal).toISOString()
+                                    })
+                                    .select()
+                                    .single();
 
-                // 출하 헤더 생성
-                const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
-                // 루프 내 충돌을 피하기 위해 인덱스 및 랜덤값 추가
-                const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-                const shipmentNo = `SH${today}-${random}-${processedGroups + 1}`;
+                                if (shipError) throw shipError;
 
-                const { data: shipment, error: shipError } = await supabase
-                    .from('shipments')
-                    .insert({
-                        company_id: profile?.company_id,
-                        order_id: orderId,
-                        shipment_no: shipmentNo,
-                        status: 'shipped',
-                        recipient_name: clientName,
-                        shipped_at: new Date(shipDateVal).toISOString()
-                    })
-                    .select()
-                    .single();
+                                const shipmentItemsPayload = groupItems.map(item => ({
+                                    company_id: profile?.company_id,
+                                    shipment_id: shipment.id,
+                                    order_item_id: item.id,
+                                    quantity: item.qty
+                                }));
 
-                if (shipError) throw shipError;
+                                const { error: itemsError } = await supabase.from('shipment_items').insert(shipmentItemsPayload);
+                                if (itemsError) throw itemsError;
 
-                // 출하 품목 생성
-                const shipmentItemsPayload = groupItems.map(item => ({
-                    company_id: profile?.company_id,
-                    shipment_id: shipment.id,
-                    order_item_id: item.id,
-                    quantity: item.qty // 전체 수량
-                }));
+                                processedGroups++;
+                            }
 
-                const { error: itemsError } = await supabase.from('shipment_items').insert(shipmentItemsPayload);
-                if (itemsError) throw itemsError;
+                            await Promise.all(Object.keys(groups).map(oid => checkAndCompleteOrder(oid)));
 
-                processedGroups++;
+                            alert(`일괄 출하 처리가 완료되었습니다. (전표 ${processedGroups}건 생성)`);
+                            setSelectedItemIds(new Set());
+                            fetchItems();
+                        } catch (e) {
+                            console.error(e);
+                            const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
+                            alert('출하 처리 중 오류가 발생했습니다: ' + message);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                });
             }
-
-            // 영향을 받은 모든 주문의 완료 여부 확인
-            await Promise.all(Object.keys(groups).map(oid => checkAndCompleteOrder(oid)));
-
-            alert(`일괄 출하 처리가 완료되었습니다. (전표 ${processedGroups}건 생성)`);
-            setSelectedItemIds(new Set());
-            fetchItems();
-        } catch (e) {
-            console.error(e);
-            const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
-            alert('출하 처리 중 오류가 발생했습니다: ' + message);
-        } finally {
-            setLoading(false);
-        }
+        });
     };
 
     const toggleSelection = (id: string) => {
@@ -599,6 +643,24 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 isOpen={isLabelModalOpen}
                 onClose={() => setIsLabelModalOpen(false)}
                 items={getSelectedItems()}
+            />
+
+            {/* Prompt & Confirm Modals */}
+            <ConfirmModal
+                isOpen={confirmConfig.isOpen}
+                onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                onConfirm={confirmConfig.onConfirm}
+            />
+            <PromptModal
+                isOpen={promptConfig.isOpen}
+                onClose={() => setPromptConfig({ ...promptConfig, isOpen: false })}
+                title={promptConfig.title}
+                message={promptConfig.message}
+                defaultValue={promptConfig.defaultValue}
+                type={promptConfig.type}
+                onSubmit={promptConfig.onSubmit}
             />
         </div>
     );
