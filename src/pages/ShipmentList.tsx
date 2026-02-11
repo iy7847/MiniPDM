@@ -161,10 +161,10 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
             // 날짜 필터
             if (filters.startDate) query = query.gte('orders.delivery_date', filters.startDate);
 
-            // '미출하' 탭의 경우, 확정된 주문이 표시되도록 기본적으로 미래 날짜를 제한하지 않음.
-            // '미출하' 탭이 아니거나 사용자가 오늘 이후의 종료일을 수동으로 변경한 경우에만 'lte' 적용.
+            // '미출하' 탭이나 '출하 완료' 탭 모두, 기본 상태(오늘)에서는 미래 납기일 항목이 누락되지 않도록 
+            // 사용자가 종료일(endDate)을 오늘이 아닌 날짜로 직접 변경한 경우에만 필터를 적용합니다.
             const today = new Date().toISOString().split('T')[0];
-            if (filters.endDate && (filters.status !== 'unshipped' || filters.endDate !== today)) {
+            if (filters.endDate && filters.endDate !== today) {
                 query = query.lte('orders.delivery_date', filters.endDate);
             }
 

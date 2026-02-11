@@ -4,6 +4,7 @@ import { EstimateItem, Material, DIFFICULTY_FACTOR, CURRENCY_SYMBOL, INITIAL_ITE
 import { MobileModal } from '../common/MobileModal';
 import { NumberInput } from '../common/NumberInput';
 import { calculateDiscountRate } from '../../utils/estimateUtils';
+import { useProfile } from '../../hooks/useProfile';
 
 interface EstimateItemModalProps {
   isOpen: boolean;
@@ -71,6 +72,7 @@ export function EstimateItemModal({
   existingItems = []
 }: EstimateItemModalProps) {
 
+  const { profile } = useProfile();
   const [itemForm, setItemForm] = useState<EstimateItem>(INITIAL_ITEM_FORM);
   const [applicationRate, setApplicationRate] = useState(100);
   const currencySymbol = CURRENCY_SYMBOL[currency] || currency;
@@ -219,10 +221,11 @@ export function EstimateItemModal({
           const dMin = itemForm.spec_d * 0.95;
           const dMax = itemForm.spec_d * 1.05;
 
-          // [Fix] Simplified query: exact shape match + range
+          // [Fix] Simplified query: exact shape match + range + company isolation
           let query = supabase
             .from('estimate_items')
-            .select('*, files(id, file_name, file_type, file_path)')
+            .select('*, estimates!inner(company_id), files(id, file_name, file_type, file_path)')
+            .eq('estimates.company_id', profile?.company_id)
             .eq('shape', itemForm.shape)
             .gte('spec_w', wMin).lte('spec_w', wMax)
             .gte('spec_d', dMin).lte('spec_d', dMax);
@@ -243,7 +246,8 @@ export function EstimateItemModal({
           const prefix = itemForm.part_no.substring(0, 3);
           const { data, error } = await supabase
             .from('estimate_items')
-            .select('*, files(id, file_name, file_type, file_path)')
+            .select('*, estimates!inner(company_id), files(id, file_name, file_type, file_path)')
+            .eq('estimates.company_id', profile?.company_id)
             .ilike('part_no', `${prefix}%`)
             .limit(20);
 
