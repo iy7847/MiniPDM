@@ -75,30 +75,57 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
     }
   }, []);
 
+  const PAGE_STORAGE_KEYS: Record<string, string[]> = {
+    estimates: ['estimates_filters'],
+    'estimate-search': ['estimate_search_keyword', 'estimate_search_noteKeyword', 'estimate_search_statusFilter', 'estimate_search_sizeW', 'estimate_search_sizeD', 'estimate_search_sizeH', 'estimate_search_tolerance'],
+    orders: ['orders_filters'],
+    shipments: ['shipments_filters'],
+    production: ['production_activeTab', 'production_viewStatus', 'production_filters', 'production_keyword'],
+    'expense-analysis': ['expense_filters', 'expense_materials', 'expense_pp', 'expense_ht'],
+    clients: ['clients_searchTerm'],
+    materials: ['materials_activeTab'],
+  };
+
   const SidebarButton = ({ page, icon, label }: { page: string, icon: string, label: string }) => {
     const isActive = currentPage === page;
+
+    const handleClick = () => {
+      // 1번 방식 반영: 현재 활성화된(페이지) 메뉴를 "다시" 클릭했을 때만 초기화되도록 수정
+      if (isActive) {
+        const keysToClear = PAGE_STORAGE_KEYS[page];
+        if (keysToClear) {
+          keysToClear.forEach(key => {
+            try {
+              sessionStorage.removeItem(key);
+            } catch (e) { }
+          });
+        }
+      }
+      onNavigate(page);
+    };
+
     return (
       <button
-        onClick={() => onNavigate(page)}
-        className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-4'} py-3.5 mb-1 rounded-xl transition-all duration-300 group relative overflow-hidden
+        onClick={handleClick}
+        className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'px-4'} py-3 rounded-xl transition-all duration-300 group relative overflow-hidden
         ${isActive
-            ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-glow'
-            : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
+            ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 font-bold'
+            : 'text-slate-300 hover:text-white hover:bg-white/10 border border-transparent hover:border-white/5 font-medium'}`}
         title={isCollapsed ? label : ''}
       >
         {/* Active Indicator */}
-        {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-white/20"></div>}
+        {isActive && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-200 shadow-[0_0_10px_rgba(199,210,254,0.8)]"></div>}
 
-        <span className={`text-xl transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
+        <span className={`text-xl transition-all duration-300 ${isActive ? 'scale-110 drop-shadow-md' : 'group-hover:scale-110 drop-shadow-sm'}`}>{icon}</span>
 
         {!isCollapsed && (
-          <span className={`ml-3 text-sm font-bold tracking-tight transition-all duration-300 ${isActive ? 'translate-x-1' : ''}`}>
+          <span className={`ml-3 tracking-wide transition-all duration-300 ${isActive ? 'translate-x-1 drop-shadow-sm text-[15px]' : 'text-sm group-hover:translate-x-1'}`}>
             {label}
           </span>
         )}
 
         {isActive && !isCollapsed && (
-          <span className="ml-auto text-xs opacity-50">●</span>
+          <div className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-200 animate-pulse shadow-[0_0_8px_rgba(199,210,254,1)]"></div>
         )}
       </button>
     );
@@ -117,8 +144,8 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
       <aside
         className={`
           fixed inset-y-0 left-0 z-40 md:relative md:translate-x-0 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
-          ${isCollapsed ? '-translate-x-full md:translate-x-0 md:w-24' : 'translate-x-0 w-72'}
-          glass-dark flex flex-col border-r border-slate-700/50 shrink-0
+          ${isCollapsed ? '-translate-x-full md:translate-x-0 md:w-24' : 'translate-x-0 w-[280px]'}
+          bg-[#1e2330] flex flex-col border-r border-[#2a3040] shrink-0 shadow-2xl
         `}
       >
         {/* 로고 및 토글 버튼 */}
@@ -159,8 +186,8 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
 
         {/* 네비게이션 메뉴 */}
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto scrollbar-hide">
-          <div className="px-2 mb-2">
-            {!isCollapsed && <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-2">Menu</p>}
+          <div className="px-2 mb-2 mt-4">
+            {!isCollapsed && <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-2">Menu</p>}
           </div>
           <SidebarButton page="dashboard" icon="📊" label="대시보드" />
           <SidebarButton page="materials" icon="🔩" label="소재 관리" />
@@ -176,7 +203,6 @@ export function Sidebar({ currentPage, onNavigate, onLogout, isCollapsed, onTogg
           <div className="mt-8"></div>
           <SidebarButton page="settings" icon="⚙️" label="환경 설정" />
         </nav>
-
 
         {/* 하단 로그아웃 및 사용자 정보 */}
         <div className="p-5 border-t border-white/5 shrink-0 bg-black/20 backdrop-blur-sm">

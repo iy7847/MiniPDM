@@ -9,8 +9,11 @@ import { ProductionCompleteModal } from '../components/production/ProductionComp
 import { useFileHandler } from '../hooks/useFileHandler';
 import { ProductionItemRow } from '../components/production/ProductionItemRow';
 import { Pagination } from '../components/common/ui/Pagination';
-
+import { useAppToast } from '../contexts/ToastContext';
 import { OrderItem } from '../types/order';
+import { usePreservedState } from '../hooks/usePreservedState';
+import { TabFilter } from '../components/common/ui/TabFilter';
+import { exportMaterialOrder } from '../utils/exportMaterialOrder';
 
 export interface ExtendedProductionItem extends Omit<OrderItem, 'estimate_items'> {
     orders: {
@@ -23,7 +26,11 @@ export interface ExtendedProductionItem extends Omit<OrderItem, 'estimate_items'
     };
     estimate_items: {
         id: string;
-        materials: { name: string } | null;
+        shape?: 'rect' | 'round';
+        raw_w?: number;
+        raw_d?: number;
+        raw_h?: number;
+        materials: { name: string; code: string } | null;
         post_processings: { name: string } | null;
         heat_treatments: { name: string } | null;
     } | null;
@@ -42,6 +49,7 @@ interface ProductionManagementProps {
 
 export function ProductionManagement({ onNavigate }: ProductionManagementProps) {
     const { profile } = useProfile();
+    const toast = useAppToast();
     const [items, setItems] = useState<ExtendedProductionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -56,9 +64,9 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
     }, []);
 
     // 필터 상태
-    const [activeTab, setActiveTab] = useState<'ALL' | 'INHOUSE' | 'OUTSOURCE'>('ALL');
-    const [viewStatus, setViewStatus] = useState<'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE'>('ALL');
-    const [filters, setFilters] = useState({
+    const [activeTab, setActiveTab] = usePreservedState<'ALL' | 'INHOUSE' | 'OUTSOURCE'>('production_activeTab', 'ALL');
+    const [viewStatus, setViewStatus] = usePreservedState<'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE'>('production_viewStatus', 'ACTIVE');
+    const [filters, setFilters] = usePreservedState('production_filters', {
         startDate: (() => {
             const d = new Date();
             d.setMonth(d.getMonth() - 3);
@@ -69,7 +77,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
         pageSize: 20
     });
     const [totalCount, setTotalCount] = useState(0);
-    const [keyword, setKeyword] = useState('');
+    const [keyword, setKeyword] = usePreservedState('production_keyword', '');
 
     // 모달 상태
     const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
@@ -100,7 +108,11 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                     ),
                     estimate_items (
                          id,
-                         materials (name),
+                         shape,
+                         raw_w,
+                         raw_d,
+                         raw_h,
+                         materials (name, code),
                          post_processings (name),
                          heat_treatments (name)
                     ),
@@ -176,7 +188,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
 
     const openCompleteModal = (itemsToComplete?: ExtendedProductionItem[]) => {
         const targets = itemsToComplete || items.filter(i => selectedItemIds.has(i.id));
-        if (targets.length === 0) return alert('완료 처리할 품목을 선택해주세요.');
+        if (targets.length === 0) { toast.warning('완료 처리할 품목을 선택해주세요.'); return; }
 
         setCompletionTargets(targets);
         setIsCompleteModalOpen(true);
@@ -194,9 +206,9 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             .in('id', ids);
 
         if (error) {
-            alert('오류 발생: ' + error.message);
+            toast.error('오류 발생: ' + error.message);
         } else {
-            alert('완료 처리되었습니다.');
+            toast.success('완료 처리되었습니다.');
             setIsCompleteModalOpen(false);
             setCompletionTargets([]);
             fetchItems();
@@ -213,7 +225,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             targets = items.filter(i => selectedItemIds.has(i.id));
         }
 
-        if (targets.length === 0) return alert('취소할 품목을 선택해주세요.');
+        if (targets.length === 0) { toast.warning('취소할 품목을 선택해주세요.'); return; }
 
         if (!confirm(`선택한 ${targets.length}개 항목의 완료 처리를 취소하시겠습니까?\n상태가 [진행 중]으로 변경됩니다.`)) return;
 
@@ -228,9 +240,9 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             .in('id', ids);
 
         if (error) {
-            alert('오류: ' + error.message);
+            toast.error('오류: ' + error.message);
         } else {
-            alert('완료 처리가 취소되었습니다.');
+            toast.success('완료 처리가 취소되었습니다.');
             setSelectedItemIds(new Set());
             fetchItems();
         }
@@ -244,7 +256,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             ids = Array.from(selectedItemIds);
         }
 
-        if (ids.length === 0) return alert('작업을 시작할 품목을 선택해주세요.');
+        if (ids.length === 0) { toast.warning('작업을 시작할 품목을 선택해주세요.'); return; }
         if (!confirm(`${ids.length}개 품목의 작업을 시작하시겠습니까?`)) return;
 
         const { error } = await supabase
@@ -253,7 +265,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
             .in('id', ids);
 
         if (error) {
-            alert('오류: ' + error.message);
+            toast.error('오류: ' + error.message);
             return;
         }
 
@@ -270,7 +282,7 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                 .eq('status', 'ORDERED');
         }
 
-        alert('작업이 시작되었습니다.');
+        toast.success('작업이 시작되었습니다.');
         fetchItems();
     };
 
@@ -300,9 +312,23 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
 
     const filteredItems = items.filter(i => {
         if (!keyword) return true;
-        const searchTarget = `${i.part_no} ${i.part_name} ${i.orders?.po_no} ${i.orders?.clients?.name}`.toLowerCase();
+        const searchTarget = `${i.part_no} ${i.part_name} ${i.orders?.clients?.name}`.toLowerCase();
         return searchTarget.includes(keyword.toLowerCase());
     });
+
+    const handleExportMaterialOrder = () => {
+        const targetItems = items.filter(i => selectedItemIds.has(i.id));
+        if (targetItems.length === 0) {
+            toast.warning('소재 발주서를 작성할 품목을 선택해주세요.');
+            return;
+        }
+        exportMaterialOrder(targetItems).then(() => {
+            toast.success('소재 발주서가 다운로드 되었습니다.');
+        }).catch(err => {
+            console.error(err);
+            toast.error('소재 발주서 생성 중 오류가 발생했습니다.');
+        });
+    };
 
     return (
         <div className="h-full flex flex-col bg-slate-50 relative">
@@ -313,80 +339,63 @@ export function ProductionManagement({ onNavigate }: ProductionManagementProps) 
                 />
 
                 <Section>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* 상태 탭 */}
-                        <Card className="glass flex items-center p-1" noPadding>
-                            <div className="flex flex-1 gap-1">
-                                {[
-                                    { key: 'ALL', label: '📊 전체' },
-                                    { key: 'ACTIVE', label: '🔥 대기' },
-                                    { key: 'PROCESSING', label: '🚧 진행' },
-                                    { key: 'DONE', label: '✅ 완료' },
-                                ].map(tab => (
-                                    <button
-                                        key={tab.key}
-                                        onClick={() => {
-                                            setViewStatus(tab.key as 'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE');
-                                            setFilters({ ...filters, page: 1 });
-                                        }}
-                                        className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${viewStatus === tab.key
-                                            ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5'
-                                            : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'
-                                            }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                    <Card className="p-4">
+                        <div className="flex flex-col gap-4">
+                            <div className="w-full">
+                                <TabFilter
+                                    options={[
+                                        { label: '🔥 대기', value: 'ACTIVE' },
+                                        { label: '🚧 진행', value: 'PROCESSING' },
+                                        { label: '✅ 완료', value: 'DONE' },
+                                        { label: '📊 전체', value: 'ALL' },
+                                    ]}
+                                    value={viewStatus}
+                                    onChange={(val) => {
+                                        setViewStatus(val as 'ALL' | 'ACTIVE' | 'PROCESSING' | 'DONE');
+                                        setFilters({ ...filters, page: 1 });
+                                    }}
+                                />
                             </div>
-                        </Card>
-
-                        {/* 위치 탭 */}
-                        <Card className="glass flex items-center p-1" noPadding>
-                            <div className="flex flex-1 gap-1">
-                                {[
-                                    { key: 'INHOUSE', label: '🏭 사내' },
-                                    { key: 'OUTSOURCE', label: '🚚 외주' },
-                                    { key: 'ALL', label: '전체' },
-                                ].map(tab => (
-                                    <button
-                                        key={tab.key}
-                                        onClick={() => setActiveTab(tab.key as 'ALL' | 'INHOUSE' | 'OUTSOURCE')}
-                                        className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${activeTab === tab.key
-                                            ? 'bg-indigo-600 text-white shadow-glow'
-                                            : 'text-slate-500 hover:bg-white/50 hover:text-indigo-600'
-                                            }`}
+                            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
+                                <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto flex-1">
+                                    <select
+                                        className="border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 bg-slate-50 hover:bg-white transition-colors"
+                                        value={activeTab}
+                                        onChange={(e) => setActiveTab(e.target.value as 'ALL' | 'INHOUSE' | 'OUTSOURCE')}
                                     >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                                        <option value="ALL">전체 (사내/외주)</option>
+                                        <option value="INHOUSE">🏭 사내</option>
+                                        <option value="OUTSOURCE">🚚 외주</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="검색 (품번, 업체명)..."
+                                        value={keyword}
+                                        onChange={(e) => setKeyword(e.target.value)}
+                                        className="w-full border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 bg-slate-50 hover:bg-white transition-all placeholder:text-slate-400"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                                    <input type="date" className="border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 text-slate-600 bg-slate-50" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
+                                    <span className="text-slate-400 font-bold">~</span>
+                                    <input type="date" className="border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-200 text-slate-600 bg-slate-50" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
+                                </div>
                             </div>
-                        </Card>
-                    </div>
-                </Section>
-
-                {/* Search Bar */}
-                <Section>
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <input
-                            type="text"
-                            placeholder="검색 (PO, 품번, 업체명)..."
-                            value={keyword}
-                            onChange={(e) => setKeyword(e.target.value)}
-                            className="flex-1 border border-slate-200 p-3 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-brand-200"
-                        />
-                        <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-xl shadow-sm">
-                            <span className="text-xs font-bold text-slate-500 ml-2">기간:</span>
-                            <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value, page: 1 })} />
-                            <span className="text-slate-400">~</span>
-                            <input type="date" className="border-0 p-1 text-sm outline-none text-slate-600" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value, page: 1 })} />
                         </div>
-                    </div>
+                    </Card>
                 </Section>
 
                 <Section
                     title={`생산 목록 (${filteredItems.length}건)`}
                     rightElement={
                         <div className="flex gap-2">
+                            <Button
+                                onClick={handleExportMaterialOrder}
+                                variant="glass"
+                                className={`text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 ${selectedItemIds.size > 0 ? '' : 'opacity-50'}`}
+                            >
+                                📋 소재 발주서 작성 ({selectedItemIds.size})
+                            </Button>
                             {viewStatus === 'DONE' && (
                                 <Button
                                     onClick={() => handleUndoComplete()}

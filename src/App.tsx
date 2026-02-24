@@ -3,6 +3,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabaseClient';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import { ToastProvider } from './contexts/ToastContext';
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -41,10 +42,12 @@ function App() {
   }
 
   return (
-    <Dashboard 
-      currentPage={currentPage} 
-      onNavigate={setCurrentPage} 
-    />
+    <ToastProvider>
+      <Dashboard
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
+      />
+    </ToastProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Client, Material, EstimateItem, INITIAL_ITEM_FORM, CURRENCY_SYMBOL, DEFAULT_QUOTATION_TERMS, ExcelExportPreset, PostProcessing, DIFFICULTY_FACTOR, HeatTreatment, CompanyInfo, DiscountPolicy, AttachedFile } from '../types/estimate';
+import type { OcrOutputItem } from '../components/features/SmartPdfImporter';
 import { exportEstimateToExcel } from '../utils/excelExport';
 import { calculateDiscountRate } from '../utils/estimateUtils';
 
@@ -106,7 +107,7 @@ export function useEstimateLogic(estimateId: string | null) {
             // [변경] 회사 ID로 필터링하여 기초 데이터 조회
             const [clientRes, matRes, ppRes, htRes] = await Promise.all([
               supabase.from('clients').select('id, name, currency').eq('company_id', profile.company_id).order('name'),
-              supabase.from('materials').select('id, name, code, density, unit_price').eq('company_id', profile.company_id).order('code'),
+              supabase.from('materials').select('id, name, code, density, unit_price, category').eq('company_id', profile.company_id).order('code'),
               supabase.from('post_processings').select('*').eq('company_id', profile.company_id).order('name'),
               supabase.from('heat_treatments').select('*').eq('company_id', profile.company_id).order('name') // [NEW]
             ]);
@@ -475,8 +476,8 @@ export function useEstimateLogic(estimateId: string | null) {
       payload.heat_treatment_cost = Math.round(heatTreatCost);
     }
 
-    // 관련 필드가 변경된 경우 항상 합계 재계산
-    if ('process_time' in updates || 'profit_rate' in updates || 'difficulty' in updates || 'post_processing_id' in updates || 'heat_treatment_id' in updates) {
+    // 관련 필드가 변경된 경우 항상 합계 재계산 (수량 변경 시 할인율 및 합계액 변경)
+    if ('qty' in updates || 'process_time' in updates || 'profit_rate' in updates || 'difficulty' in updates || 'post_processing_id' in updates || 'heat_treatment_id' in updates) {
       payload.unit_price = finalUnitPrice;
       payload.supply_price = finalSupplyPrice;
     }
@@ -582,7 +583,7 @@ export function useEstimateLogic(estimateId: string | null) {
     } catch (error: any) { alert(`오류: ${error instanceof Error ? error.message : '알 수 없는 오류'}`); } finally { setLoading(false); }
   };
 
-  const handleOcrConfirm = async (results: Partial<EstimateItem>[]) => {
+  const handleOcrConfirm = async (results: OcrOutputItem[]) => {
     if (!currentEstimateId) return alert('먼저 견적서를 저장해주세요.');
     const { data: { user } } = await supabase.auth.getUser();
     setLoading(true);
@@ -736,9 +737,6 @@ export function useEstimateLogic(estimateId: string | null) {
             const normalizedFilePath = file.file_path.replace(/\//g, '\\');
             const sourceFullPath = `${companyRootPath.replace(/\/$/, '').replace(/\\$/, '')}\\${normalizedFilePath.replace(/^\//, '').replace(/^\\/, '')}`;
 
-            console.log(`[FileCopy] 정규화 전: ${file.file_path}`);
-            console.log(`[FileCopy] 소스: ${sourceFullPath}, 대상폴더: ${relativeFolder}`);
-
             // 소스 파일 존재 여부 확인
             const exists = await window.fileSystem.checkFileExists(companyRootPath, normalizedFilePath);
             if (exists) {
@@ -746,14 +744,13 @@ export function useEstimateLogic(estimateId: string | null) {
               const copyResult = await window.fileSystem.saveFile(sourceFullPath, companyRootPath, relativeFolder);
 
               if (copyResult.success) {
-                console.log(`[FileCopy] 성공: ${copyResult.savedPath}`);
                 // order_item_id와 연결된 files 테이블에 삽입
                 const newRelativePath = `${relativeFolder}\\${file.file_name}`;
                 const filePayload = {
-                  order_item_id: newOrderItem.id, // 수주 품목에 연결
-                  estimate_item_id: null, // 견적과 구분
+                  order_item_id: newOrderItem.id,
+                  estimate_item_id: null,
                   file_name: file.file_name,
-                  file_path: newRelativePath.replace(/\\/g, '/'), // DB 일관성을 위해 슬래시로 저장
+                  file_path: newRelativePath.replace(/\\/g, '/'),
                   file_type: file.file_type,
                   file_size: file.file_size,
                   original_name: file.original_name || file.file_name,
@@ -761,11 +758,9 @@ export function useEstimateLogic(estimateId: string | null) {
                   is_current: true,
                   updated_by: user.id
                 };
-                console.log('[FileInsert] 페이로드:', filePayload);
                 const { error: fileInsertError } = await supabase.from('files').insert(filePayload);
                 if (fileInsertError) {
                   console.error('[FileInsert] 오류:', fileInsertError);
-                  // 실패 시 재시도 생략
                 }
               } else {
                 console.error(`[FileCopy] 파일 저장 실패: ${copyResult.error}`);

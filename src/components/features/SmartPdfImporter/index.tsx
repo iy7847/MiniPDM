@@ -3,6 +3,7 @@ import { pdfjs, Document, Page } from 'react-pdf';
 import Tesseract from 'tesseract.js';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { MobileModal } from '../../common/MobileModal';
+import type { EstimateItem } from '../../../types/estimate';
 
 // Vite 방식 Worker 로드
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -13,10 +14,16 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+/** SmartPdfImporter가 onConfirm 콜백으로 전달하는 아이템 타입 */
+export type OcrOutputItem = Pick<EstimateItem, 'part_no' | 'part_name' | 'qty'> & {
+  material_spec: string;
+  files: File[];
+};
+
 interface SmartPdfImporterProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (results: any[]) => void;
+  onConfirm: (results: OcrOutputItem[]) => void;
 }
 
 type OcrResult = {
@@ -336,7 +343,6 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
   };
 
   const handleApply = async () => {
-    console.log('[SmartPdfImporter] handleApply started');
     if (!file) return;
 
     setIsProcessing(true);
@@ -386,7 +392,6 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
 
         // BlobPart 타입 에러 방지를 위해 any 캐스팅 사용
         const pdfFile = new File([pdfBytes as any], pdfFileName, { type: 'application/pdf' });
-        console.log(`[SmartPdfImporter] Created PDF file: ${pdfFileName}, size: ${pdfFile.size}`);
 
         // [수정] 이미지 파일 저장 로직 제거 (경고 해결)
         const filesToAdd = [pdfFile];
@@ -400,7 +405,6 @@ export function SmartPdfImporter({ isOpen, onClose, onConfirm }: SmartPdfImporte
         });
       }
 
-      console.log('[SmartPdfImporter] calling onConfirm with items:', newItems);
       onConfirm(newItems);
       onClose();
     } catch (e: any) {

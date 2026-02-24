@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { useOrderLogic } from '../hooks/useOrderLogic';
 import { useFileHandler } from '../hooks/useFileHandler';
 import { Section } from '../components/common/ui/Section';
+import { useAppToast } from '../contexts/ToastContext';
 
 // UI 컴포넌트
 import { OrderHeader } from '../components/orders/detail/OrderHeader';
 import { OrderInfoCard } from '../components/orders/detail/OrderInfoCard';
 import { Card } from '../components/common/ui/Card';
 import { OrderItemTable } from '../components/orders/detail/OrderItemTable';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 
 // 모달
 import { LabelPrinterModal } from '../components/production/LabelPrinterModal';
@@ -23,6 +25,7 @@ interface OrderDetailProps {
 export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
     // 1. 로직 훅
     const logic = useOrderLogic(orderId, onBack);
+    const toast = useAppToast();
 
     // 2. 파일 핸들러 훅
     const fileHandler = useFileHandler(logic.companyRootPath);
@@ -32,10 +35,13 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
     const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false);
     const [batchDate, setBatchDate] = useState('');
 
+    // [수정] 통화 변경 확인용: 즉시 실행 대신 pendingCurrency에 저장 후 ConfirmModal에서 확인
+    const [pendingCurrency, setPendingCurrency] = useState<string | null>(null);
+
     // 핸들러
     const handlePreviewFile = async (file: { file_path: string }) => {
         const res = await fileHandler.openFile(file.file_path);
-        if (res && !res.success) alert('파일 열기 실패: ' + res.error);
+        if (res && !res.success) toast.error('파일 열기 실패: ' + res.error);
     };
 
     if (logic.loading) return <div className="h-full flex items-center justify-center text-slate-500 font-bold animate-pulse">수주 데이터 로딩 중...</div>;
@@ -63,7 +69,8 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                             form={logic.editForm}
                             linkedEstimate={(logic.order as any).estimates}
                             onUpdateField={logic.updateOrderField}
-                            onCurrencyChange={logic.handleBulkCurrencyChange}
+                            // 통화 변경: 즉시 실행 대신 pendingCurrency에 저장하고 ConfirmModal에서 확인
+                            onCurrencyChange={(newCurr) => setPendingCurrency(newCurr)}
                         />
                     </Section>
                 )}
@@ -178,9 +185,21 @@ export function OrderDetail({ orderId, onBack }: OrderDetailProps) {
             <ClipboardMatchModal
                 isOpen={isClipboardModalOpen}
                 onClose={() => setIsClipboardModalOpen(false)}
-                onMatch={(matches: { part_no: string; po_no: string; qty: number; unit_price: number; due_date: string; }[]) => {
-                    console.log('Clipboard matches:', matches);
+                onMatch={(_matches) => {
+                    // TODO: 클립보드 매칭 결과 처리 로직 구현 예정
                     setIsClipboardModalOpen(false);
+                }}
+            />
+
+            {/* [수정] 통화 변경 확인 ConfirmModal */}
+            <ConfirmModal
+                isOpen={!!pendingCurrency}
+                onClose={() => setPendingCurrency(null)}
+                title="통화 변경"
+                message={`통화를 ${pendingCurrency}로 변경하시겠습니까?\n모든 품목의 단가가 환율(${logic.editForm.exchange_rate})에 따라 재계산됩니다.`}
+                onConfirm={() => {
+                    if (pendingCurrency) logic.handleBulkCurrencyChange(pendingCurrency);
+                    setPendingCurrency(null);
                 }}
             />
         </div>

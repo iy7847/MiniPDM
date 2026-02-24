@@ -17,13 +17,14 @@ interface EstimateTableProps {
   onUpdateItem: (itemId: string, updates: Partial<EstimateItem>) => void;
   canViewMargins?: boolean;
   timeStep?: number;
+  profitStep?: number;
   isLocked?: boolean;
 }
 
 // [최적화된 입력] 모든 키 입력에 대한 리렌더링을 방지합니다.
 interface TableCellInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string | number;
-  onUpdate: (val: any) => void;
+  onUpdate: (val: string | number) => void;
   type?: 'text' | 'number';
 }
 
@@ -73,6 +74,7 @@ export function EstimateTable(props: EstimateTableProps) {
     onUpdateItem,
     canViewMargins = true,
     timeStep = 0.1,
+    profitStep = 1,
     isLocked = false
   } = props;
 
@@ -214,7 +216,13 @@ export function EstimateTable(props: EstimateTableProps) {
                     </td>
 
                     <td className="px-4 py-4 whitespace-nowrap text-right">
-                      <span className="text-sm font-black text-slate-800">{item.qty}</span>
+                      <TableCellInput
+                        type="number"
+                        value={item.qty || 1}
+                        onUpdate={(val) => onUpdateItem(item.id!, { qty: Number(val) || 1 })}
+                        className="w-16 p-1.5 text-right text-sm font-black border-none rounded-lg focus:ring-2 focus:ring-brand-200 outline-none bg-slate-50 transition-all text-slate-800 disabled:opacity-70"
+                        disabled={isLocked}
+                      />
                     </td>
 
                     {canViewMargins && (
@@ -234,6 +242,7 @@ export function EstimateTable(props: EstimateTableProps) {
                       <td className="px-2 py-4 whitespace-nowrap text-right">
                         <input
                           type="number"
+                          step={profitStep}
                           value={item.profit_rate || 0}
                           onChange={(e) => onUpdateItem(item.id!, { profit_rate: parseFloat(e.target.value) })}
                           className="w-12 p-1.5 text-right text-xs font-black border-none rounded-lg focus:ring-2 focus:ring-orange-200 outline-none bg-orange-50/50 text-orange-600 transition-all disabled:opacity-70"
@@ -246,7 +255,7 @@ export function EstimateTable(props: EstimateTableProps) {
                       <TableCellInput
                         type="text"
                         value={item.note || ''}
-                        onUpdate={(val: string) => onUpdateItem(item.id!, { note: val })}
+                        onUpdate={(val) => onUpdateItem(item.id!, { note: String(val) })}
                         className="w-full text-xs font-medium p-1.5 border-none rounded-lg focus:ring-2 focus:ring-brand-100 outline-none bg-slate-50 hover:bg-white transition-all text-slate-500 focus:text-slate-800 disabled:opacity-70"
                         placeholder="메모를 입력하세요..."
                         disabled={isLocked}

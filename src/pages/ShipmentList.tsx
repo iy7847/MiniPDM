@@ -11,6 +11,8 @@ import { ConfirmModal } from '../components/common/ConfirmModal';
 import { useFileHandler } from '../hooks/useFileHandler';
 import { OrderItem } from '../types/order';
 import { ShipmentWithItems } from '../types/shipment';
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 
 // 확장된 OrderItem 타입 (조인된 데이터 포함)
 interface ExtendedOrderItem extends OrderItem {
@@ -37,6 +39,7 @@ interface ExtendedOrderItem extends OrderItem {
 
 export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
     const { profile } = useProfile();
+    const toast = useAppToast();
     const [items, setItems] = useState<ExtendedOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
@@ -51,7 +54,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
         if (path) setCompanyRootPath(path);
     }, []);
 
-    const [filters, setFilters] = useState({
+    const [filters, setFilters] = usePreservedState('shipments_filters', {
         status: 'unshipped', // '미출하' | '출하 완료' | '전체'
         clientId: '',
         startDate: (() => {
@@ -168,12 +171,9 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 query = query.lte('orders.delivery_date', filters.endDate);
             }
 
-            // 키워드 필터 (서버 측에서 가능한 경우 수행하지만, 복잡한 중첩 OR의 경우 클라이언트 측에서 처리)
-            // PO No 검색을 위해 orders!inner(po_no) 필터링 가능
-            if (filters.keyword) {
-                query = query.or(`part_no.ilike.%${filters.keyword}%,part_name.ilike.%${filters.keyword}%`);
-                // 참고: po_no와의 교차 테이블 OR은 여기서 까다로우므로 단순하게 유지함.
-            }
+            // 키워드 필터는 클라이언트 측에서 처리 (orders.clients.name 포함 검색을 위함)
+            // 참고: 서버 측 OR에 중첩 테이블 조인을 포함하기 까다로우므로
+            // 데이터를 가져온 후 클라이언트 측에서 필터링합니다.
 
             if (filters.showCompletedOnly) {
                 query = query.eq('process_status', 'DONE');
@@ -202,6 +202,15 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                     });
                 }
 
+                // 키워드 검색 클라이언트 측 필터링 (도번, 품명, 업체명)
+                if (filters.keyword) {
+                    const kw = filters.keyword.toLowerCase();
+                    processedData = processedData.filter(i => {
+                        const target = `${i.part_no} ${i.part_name} ${i.orders?.clients?.name}`.toLowerCase();
+                        return target.includes(kw);
+                    });
+                }
+
                 setItems(processedData);
                 setTotalCount(count || 0);
                 setSelectedItemIds(new Set());
@@ -227,7 +236,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 if (!error) {
                     setItems(prev => prev.map(i => i.orders.id === orderId ? { ...i, orders: { ...i.orders, delivery_date: newDate } } : i));
                 } else {
-                    alert("납기일 수정 중 오류가 발생했습니다.");
+                    toast.error('납기일 수정 중 오류가 발생했습니다.');
                 }
             }
         });
@@ -248,7 +257,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                     const shippedQty = existingShipments?.reduce((sum, s) => sum + s.quantity, 0) || 0;
                     const remainingQty = item.qty - shippedQty;
 
-                    if (remainingQty <= 0) return alert('이미 전체 수량이 출하되었습니다.');
+                    if (remainingQty <= 0) { toast.info('이미 전체 수량이 출하되었습니다.'); return; }
 
                     setPromptConfig({
                         isOpen: true,
@@ -260,8 +269,8 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                             if (!inputQtyStr) return;
 
                             const inputQty = parseInt(inputQtyStr, 10);
-                            if (isNaN(inputQty) || inputQty <= 0) return alert('유효한 수량을 입력해주세요.');
-                            if (inputQty > remainingQty) return alert(`남은 수량(${remainingQty})보다 많이 출하할 수 없습니다.`);
+                            if (isNaN(inputQty) || inputQty <= 0) { toast.warning('유효한 수량을 입력해주세요.'); return; }
+                            if (inputQty > remainingQty) { toast.warning(`남은 수량(${remainingQty})보다 많이 출하할 수 없습니다.`); return; }
 
                             const today = new Date().toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' }).replace(/\. /g, '').replace('.', '');
                             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
@@ -293,7 +302,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
                             if (itemError) throw itemError;
 
-                            alert("출하가 완료되었습니다.");
+                            toast.success('출하가 완료되었습니다.');
                             await checkAndCompleteOrder(item.orders.id);
                             fetchItems();
                         }
@@ -301,7 +310,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 } catch (e) {
                     console.error(e);
                     const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
-                    alert("출하 처리 중 오류가 발생했습니다: " + message);
+                    toast.error('출하 처리 중 오류가 발생했습니다: ' + message);
                 }
             }
         });
@@ -333,7 +342,6 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
         if (fullyShipped) {
             await supabase.from('orders').update({ status: 'DONE' }).eq('id', orderId);
-            console.log(`주문 ${orderId}가 완료(DONE)로 표시되었습니다.`);
         } else {
             // 부분 출하된 경우 PRODUCTION으로 되돌릴지 검토?
             // await supabase.from('orders').update({ status: 'PRODUCTION' }).eq('id', orderId);
@@ -351,7 +359,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                 if (!error) {
                     fetchItems();
                 } else {
-                    alert("취소 실패: " + error.message);
+                    toast.error('취소 실패: ' + error.message);
                 }
             }
         });
@@ -360,11 +368,11 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
     // [신규] 일괄 출하
     const handleBulkShipment = async () => {
         const selectedIds = Array.from(selectedItemIds);
-        if (selectedIds.length === 0) return alert('선택된 품목이 없습니다.');
+        if (selectedIds.length === 0) { toast.warning('선택된 품목이 없습니다.'); return; }
 
         const targetItems = items.filter(i => selectedIds.includes(i.id) && (!i.shipment_items || i.shipment_items.length === 0));
 
-        if (targetItems.length === 0) return alert('선택된 품목 중 출하 가능한(미출하) 품목이 없습니다.');
+        if (targetItems.length === 0) { toast.warning('선택된 품목 중 출하 가능한(미출하) 품목이 없습니다.'); return; }
 
         setPromptConfig({
             isOpen: true,
@@ -429,13 +437,13 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
 
                             await Promise.all(Object.keys(groups).map(oid => checkAndCompleteOrder(oid)));
 
-                            alert(`일괄 출하 처리가 완료되었습니다. (전표 ${processedGroups}건 생성)`);
+                            toast.success(`일괄 출하 처리가 완료되었습니다. (전표 ${processedGroups}건 생성)`);
                             setSelectedItemIds(new Set());
                             fetchItems();
                         } catch (e) {
                             console.error(e);
                             const message = e instanceof Error ? e.message : '알 수 없는 오류가 발생했습니다.';
-                            alert('출하 처리 중 오류가 발생했습니다: ' + message);
+                            toast.error('출하 처리 중 오류가 발생했습니다: ' + message);
                         } finally {
                             setLoading(false);
                         }
@@ -537,7 +545,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">검색</span>
                                 <input
                                     className="border border-slate-200 p-2.5 rounded-xl text-sm w-full outline-none focus:ring-2 focus:ring-brand-200 placeholder:text-slate-400 bg-slate-50 focus:bg-white transition-colors"
-                                    placeholder="도번 / 품명 / PO 검색"
+                                    placeholder="도번 / 품명 / 업체명 검색"
                                     value={filters.keyword}
                                     onChange={e => setFilters({ ...filters, keyword: e.target.value, page: 1 })}
                                 />
@@ -573,7 +581,7 @@ export function ShipmentList({ onNavigate }: { onNavigate: (page: string, id?: s
                             <Button
                                 onClick={() => {
                                     if (selectedItemIds.size === 0) {
-                                        alert('출력할 품목을 선택해주세요.');
+                                        toast.warning('출력할 품목을 선택해주세요.');
                                         return;
                                     }
                                     setIsLabelModalOpen(true);
@@ -679,7 +687,7 @@ interface ShipmentItemRowProps {
 
 function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, onComplete, onCancel, onNavigate, onPreviewFile }: ShipmentItemRowProps) {
     const isShipped = item.shipment_items && item.shipment_items.length > 0;
-
+    const toast = useAppToast();
     const [shipmentDate, setShipmentDate] = useState(new Date().toISOString().slice(0, 10));
 
     return (
@@ -714,6 +722,12 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                     <span className="inline-block mt-1 ml-1 text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-100 font-bold">
                         ✅ 생산 완료
                     </span>
+                )}
+                {item.production_note && (
+                    <div className="mt-1.5 text-[11px] text-slate-500 bg-amber-50/50 p-1.5 rounded border border-amber-100/50 flex items-start gap-1">
+                        <span className="text-amber-500 shrink-0">📝</span>
+                        <span className="break-all whitespace-pre-wrap leading-tight">{item.production_note}</span>
+                    </div>
                 )}
             </td>
 
@@ -809,7 +823,7 @@ function ShipmentItemRow({ item, isSelected, onToggleSelection, onUpdateDate, on
                                 }`}
                             onClick={() => {
                                 if (item.process_status === 'DONE') onComplete(item, shipmentDate);
-                                else alert('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
+                                else toast.warning('가공 완료(DONE) 상태인 품목만 출하할 수 있습니다.');
                             }}
                             disabled={item.process_status !== 'DONE'}
                         >

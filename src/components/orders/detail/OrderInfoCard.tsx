@@ -1,7 +1,8 @@
 
 import { Card } from '../../common/ui/Card';
 import { Input } from '../../common/ui/Input';
-
+import { Estimate } from '../../../types/estimate';
+import { Order } from '../../../types/order';
 
 interface OrderInfoCardProps {
     form: {
@@ -12,8 +13,8 @@ interface OrderInfoCardProps {
         exchange_rate: number;
         total_amount: number;
     };
-    linkedEstimate: any;
-    onUpdateField: (field: any, value: any) => void;
+    linkedEstimate: Estimate | null;
+    onUpdateField: (field: keyof Order, value: string | number) => void;
     onCurrencyChange: (currency: string) => void;
 }
 
@@ -52,9 +53,8 @@ export const OrderInfoCard = ({ form, linkedEstimate, onUpdateField, onCurrencyC
                             value={form.currency}
                             onChange={(e) => {
                                 const newCurr = e.target.value;
-                                if (confirm(`통화를 ${newCurr}로 변경하시겠습니까?\n모든 품목의 단가가 환율(${form.exchange_rate})에 따라 재계산됩니다.`)) {
-                                    onCurrencyChange(newCurr);
-                                }
+                                // confirm() 대신 바로 통화 변경 (상위에서 ConfirmModal로 처리)
+                                onCurrencyChange(newCurr);
                             }}
                         >
                             <option value="KRW">KRW (₩)</option>

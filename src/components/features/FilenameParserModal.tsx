@@ -1,11 +1,22 @@
 import { useState, useEffect } from 'react';
 import { MobileModal } from '../common/MobileModal';
 
+interface ParsedItem {
+  files: File[];
+  part_name: string;
+  part_no: string;
+  spec_w: number;
+  spec_d: number;
+  spec_h: number;
+  qty: number;
+  [key: string]: unknown;
+}
+
 interface FilenameParserModalProps {
   isOpen: boolean;
   onClose: () => void;
   files: File[];
-  onConfirm: (parsedItems: any[]) => void;
+  onConfirm: (parsedItems: ParsedItem[]) => void;
 }
 
 export function FilenameParserModal({ isOpen, onClose, files, onConfirm }: FilenameParserModalProps) {
@@ -117,7 +128,7 @@ export function FilenameParserModal({ isOpen, onClose, files, onConfirm }: Filen
         fileTokens = parseFilename(`${baseName}.tmp`);
       }
 
-      const item: any = {
+      const item: ParsedItem = {
         files: groupFiles, // Attach ALL files in the group
         part_name: '',
         part_no: '',

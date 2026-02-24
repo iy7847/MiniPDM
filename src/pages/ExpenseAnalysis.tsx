@@ -31,6 +31,8 @@ ChartJS.register(
     Filler
 );
 
+import { usePreservedState } from '../hooks/usePreservedState';
+
 interface FlattenedExpenseItem {
     id: string;
     shipmentDate: string;
@@ -64,7 +66,7 @@ export function ExpenseAnalysis() {
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-    const [filters, setFilters] = useState({
+    const [filters, setFilters] = usePreservedState('expense_filters', {
         startDate: firstDay,
         endDate: lastDay,
         clientId: '',
@@ -72,9 +74,9 @@ export function ExpenseAnalysis() {
     });
 
     // 다중 선택 필터 상태
-    const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
-    const [selectedPostProcessings, setSelectedPostProcessings] = useState<string[]>([]);
-    const [selectedHeatTreatments, setSelectedHeatTreatments] = useState<string[]>([]);
+    const [selectedMaterials, setSelectedMaterials] = usePreservedState<string[]>('expense_materials', []);
+    const [selectedPostProcessings, setSelectedPostProcessings] = usePreservedState<string[]>('expense_pp', []);
+    const [selectedHeatTreatments, setSelectedHeatTreatments] = usePreservedState<string[]>('expense_ht', []);
 
     // 행 선택 (체크박스)
     const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());

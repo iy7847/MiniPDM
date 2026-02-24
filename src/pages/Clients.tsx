@@ -7,7 +7,8 @@ import { Card } from '../components/common/ui/Card';
 import { Button } from '../components/common/ui/Button';
 import { MobileModal } from '../components/common/MobileModal';
 import { FormattedInput } from '../components/common/FormattedInput';
-
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 // 국가 목록 데이터 (그룹핑)
 const COUNTRY_GROUPS = {
   '주요 국가 (Major)': [
@@ -77,8 +78,9 @@ export function Clients() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string>('member');
   const { profile } = useProfile();
+  const toast = useAppToast();
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = usePreservedState('clients_searchTerm', '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
 
@@ -146,7 +148,7 @@ export function Clients() {
       .maybeSingle();
 
     if (nameDup) {
-      alert('이미 등록된 거래처명입니다.');
+      toast.error('이미 등록된 거래처명입니다.');
       return false;
     }
 
@@ -160,7 +162,7 @@ export function Clients() {
         .maybeSingle();
 
       if (bizDup) {
-        alert('이미 등록된 사업자번호입니다.');
+        toast.error('이미 등록된 사업자번호입니다.');
         return false;
       }
     }
@@ -168,16 +170,18 @@ export function Clients() {
   };
 
   const handleSave = async () => {
-    if (!formData.name) return alert('거래처명은 필수입니다.');
+    if (!formData.name) { toast.warning('거래처명은 필수입니다.'); return; }
 
     if (formData.is_foreign && !formData.country) {
-      return alert('해외 기업인 경우 국가를 선택해주세요.');
+      toast.warning('해외 기업인 경우 국가를 선택해주세요.');
+      return;
     }
 
     if (!formData.is_foreign && formData.biz_num) {
       const cleanNum = formData.biz_num.replace(/-/g, '');
       if (cleanNum.length !== 10) {
-        return alert('국내 사업자번호는 10자리 숫자여야 합니다.');
+        toast.warning('국내 사업자번호는 10자리 숫자여야 합니다.');
+        return;
       }
     }
 
@@ -187,7 +191,7 @@ export function Clients() {
     const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
     const company_id = profile?.company_id;
 
-    if (!company_id) return alert('사용자 정보를 불러올 수 없습니다.');
+    if (!company_id) { toast.error('사용자 정보를 불러올 수 없습니다.'); return; }
 
     const isUnique = await checkDuplicate(company_id);
     if (!isUnique) return;
@@ -216,20 +220,20 @@ export function Clients() {
     }
 
     if (error) {
-      alert(`저장 실패: ${error.message}`);
+      toast.error(`저장 실패: ${error.message}`);
     } else {
-      alert(editId ? '수정되었습니다.' : '등록되었습니다.');
+      toast.success(editId ? '수정되었습니다.' : '등록되었습니다.');
       setIsModalOpen(false);
       fetchClients();
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (userRole !== 'admin' && userRole !== 'super_admin') return alert('권한이 없습니다.');
+    if (userRole !== 'admin' && userRole !== 'super_admin') { toast.warning('권한이 없습니다.'); return; }
     if (!window.confirm('정말 삭제하시겠습니까? 관련 견적 데이터에도 영향을 줄 수 있습니다.')) return;
 
     const { error } = await supabase.from('clients').delete().eq('id', id);
-    if (error) alert(`삭제 실패: ${error.message}`);
+    if (error) toast.error(`삭제 실패: ${error.message}`);
     else fetchClients();
   };
 

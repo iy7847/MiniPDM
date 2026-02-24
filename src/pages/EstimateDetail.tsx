@@ -3,6 +3,7 @@ import { PageHeader } from '../components/common/ui/PageHeader';
 import { Card } from '../components/common/ui/Card';
 import { Section } from '../components/common/ui/Section';
 import { Button } from '../components/common/ui/Button';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 import { useEstimateLogic } from '../hooks/useEstimateLogic';
 import { useProfile } from '../hooks/useProfile';
 import { supabase } from '../lib/supabaseClient';
@@ -17,6 +18,7 @@ import { SmartPdfImporter } from '../components/features/SmartPdfImporter';
 import { MobileModal } from '../components/common/MobileModal';
 import { useReactToPrint } from 'react-to-print';
 import { useRef, useState, useEffect, useMemo } from 'react';
+import { useAppToast } from '../contexts/ToastContext';
 
 interface EstimateDetailProps {
   estimateId: string | null;
@@ -27,6 +29,7 @@ interface EstimateDetailProps {
 export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetailProps) {
   const { profile } = useProfile();
   const userRole = profile?.role;
+  const toast = useAppToast();
 
   const {
     loading, clients, materials, companyRootPath, postProcessings, heatTreatments,
@@ -62,6 +65,15 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
   // [신규] 가져오기 모달
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+  // [신규] confirm() 대체 모달 상태
+  const [confirmState, setConfirmState] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void }>({
+    isOpen: false, title: '', message: '', onConfirm: () => { }
+  });
+  const openConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmState({ isOpen: true, title, message, onConfirm });
+  };
+  const closeConfirm = () => setConfirmState(prev => ({ ...prev, isOpen: false }));
+
   const [previewTemplateType, setPreviewTemplateType] = useState('A');
   const [exportAsForeign, setExportAsForeign] = useState(false);
 
@@ -74,7 +86,6 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
 
   useEffect(() => {
     if (isPreviewModalOpen) {
-      // @ts-ignore
       setPreviewTemplateType(quotationTerms.template_type || 'A');
     }
   }, [isPreviewModalOpen, quotationTerms]);
@@ -84,34 +95,36 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
   const handleDelete = async () => {
     if (!currentEstimateId) return;
     if (formData.status === 'ORDERED') {
-      alert('이미 수주된 견적서는 삭제할 수 없습니다.\n먼저 수주 관리에서 해당 건을 삭제해주세요.');
+      toast.warning('이미 수주된 견적서는 삭제할 수 없습니다. 먼저 수주 관리에서 해당 건을 삭제해주세요.');
       return;
     }
-    if (!confirm('정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
 
-    try {
-      // 1. Check orders
-      const { data: orders } = await supabase.from('orders').select('id').eq('estimate_id', currentEstimateId);
-      if (orders && orders.length > 0) {
-        alert('연결된 수주 내역이 있어 삭제할 수 없습니다.');
-        return;
+    openConfirm(
+      '견적서 삭제',
+      '정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+      async () => {
+        try {
+          const { data: orders } = await supabase.from('orders').select('id').eq('estimate_id', currentEstimateId);
+          if (orders && orders.length > 0) {
+            toast.error('연결된 수주 내역이 있어 삭제할 수 없습니다.');
+            return;
+          }
+          await supabase.from('estimate_items').delete().eq('estimate_id', currentEstimateId);
+          const { error } = await supabase.from('estimates').delete().eq('id', currentEstimateId);
+          if (error) throw error;
+          toast.success('삭제되었습니다.');
+          onBack();
+        } catch (err) {
+          toast.error('삭제 실패: ' + (err instanceof Error ? err.message : '알 수 없는 오류'));
+        }
       }
-
-      // 2. Delete
-      await supabase.from('estimate_items').delete().eq('estimate_id', currentEstimateId);
-      const { error } = await supabase.from('estimates').delete().eq('id', currentEstimateId);
-      if (error) throw error;
-
-      alert('삭제되었습니다.');
-      onBack();
-    } catch (err) {
-      alert('삭제 실패: ' + (err instanceof Error ? err.message : '알 수 없는 오류'));
-    }
+    );
   };
+
 
   const handleExcelClick = () => {
     if (excelPresets.length === 0) {
-      alert('설정 메뉴에서 엑셀 내보내기 양식(Preset)을 먼저 등록해주세요.');
+      toast.warning('설정 메뉴에서 엑셀 내보내기 양식(Preset)을 먼저 등록해주세요.');
     } else if (excelPresets.length === 1) {
       handleExportExcel(excelPresets[0].id, exportAsForeign);
     } else {
@@ -200,9 +213,12 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                     onClick={async () => {
                       const orderId = await createOrderFromEstimate();
                       if (orderId && onNavigate) {
-                        if (confirm('수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?')) {
-                          onNavigate('orders');
-                        }
+                        // confirm() → ConfirmModal로 교체
+                        openConfirm(
+                          '수주 등록 완료',
+                          '수주가 생성되었습니다. 수주 관리 페이지로 이동하시겠습니까?',
+                          () => onNavigate('orders')
+                        );
                       }
                     }}
                   >
@@ -377,7 +393,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                     <Button
                       size="sm"
                       variant="glass"
-                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsOcrModalOpen(true); }}
+                      onClick={() => { if (!currentEstimateId) { toast.warning('저장 후 사용 가능합니다.'); return; } setIsOcrModalOpen(true); }}
                       className="text-brand-700 bg-brand-50 border-brand-100 hover:bg-brand-100"
                     >
                       <span className="mr-1.5 text-xs">⚡</span> 도면 분석
@@ -385,7 +401,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                     <Button
                       size="sm"
                       variant="glass"
-                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); setIsImportModalOpen(true); }}
+                      onClick={() => { if (!currentEstimateId) { toast.warning('저장 후 사용 가능합니다.'); return; } setIsImportModalOpen(true); }}
                       className="text-cyan-700 bg-cyan-50 border-cyan-100 hover:bg-cyan-100"
                     >
                       <span className="mr-1.5 text-xs">📂</span> 가져오기
@@ -393,7 +409,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                     <Button
                       size="sm"
                       variant="primary"
-                      onClick={() => { if (!currentEstimateId) return alert('저장 후 가능'); openItemModal(null); }}
+                      onClick={() => { if (!currentEstimateId) { toast.warning('저장 후 사용 가능합니다.'); return; } openItemModal(null); }}
                       className="px-6 shadow-glow"
                     >
                       + 품목 추가
@@ -418,6 +434,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
                   onUpdateItem={handleUpdateItem}
                   canViewMargins={userRole === 'admin' || userRole === 'super_admin' || profile?.permissions?.can_view_margins}
                   timeStep={companyInfo?.default_time_step || 0.1}
+                  profitStep={companyInfo?.default_profit_rate_step || 1}
                   isLocked={isLocked}
                 />
               </Card>
@@ -500,8 +517,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
               clientInfo={clients.find(c => c.id === formData.client_id)}
               estimateInfo={printEstimateInfo}
               items={printItems}
-              // @ts-ignore
-              templateType={previewTemplateType}
+              templateType={previewTemplateType as 'A' | 'B' | 'C'}
             />
           </div>
         </div>
@@ -558,7 +574,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
         isOpen={isParserOpen}
         onClose={() => setIsParserOpen(false)}
         files={droppedFiles}
-        onConfirm={handleParsedItemsConfirm}
+        onConfirm={(parsedItems) => handleParsedItemsConfirm(parsedItems as unknown as import('../types/estimate').EstimateItem[])}
       />
 
       <SmartPdfImporter
@@ -627,6 +643,15 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
 
       {/* Terms Modal Removed */}
 
+      {/* [신규] confirm() 대체 ConfirmModal */}
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={closeConfirm}
+        title={confirmState.title}
+        message={confirmState.message}
+        onConfirm={confirmState.onConfirm}
+      />
+
       <div className="hidden">
         <QuotationTemplate
           ref={printRef}
@@ -634,8 +659,7 @@ export function EstimateDetail({ estimateId, onBack, onNavigate }: EstimateDetai
           clientInfo={clients.find(c => c.id === formData.client_id)}
           estimateInfo={printEstimateInfo}
           items={printItems}
-          // @ts-ignore
-          templateType={previewTemplateType}
+          templateType={previewTemplateType as 'A' | 'B' | 'C'}
         />
       </div>
     </>

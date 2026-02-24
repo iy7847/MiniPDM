@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Order, OrderItem } from '../types/order';
+import { Estimate } from '../types/estimate';
 import { ShipmentWithItems } from '../types/shipment';
 
 // Since AttachedFile was locally defined in OrderDetail, let's redefine or import.
@@ -89,8 +90,9 @@ export function useOrderLogic(orderId: string | null, onBack: () => void) {
             return;
         }
 
-        // 연결된 견적 데이터를 수동으로 수정 (Supabase 심층 조인이 가끔 까다로움)
-        let linkedEstimate: any = null; // 견적 데이터는 별도 타입 정의 필요할 수 있음
+        // 연결된 견적 데이터 조회 (Supabase 심층 조인 대신 명시적 추가 쿼리 사용)
+        // Pick으로 조회 콼럼만 정확히 표현
+        let linkedEstimate: Pick<Estimate, 'total_amount' | 'currency' | 'base_exchange_rate'> | null = null;
         if (orderData.estimate_id) {
             const { data: estimateData } = await supabase
                 .from('estimates')

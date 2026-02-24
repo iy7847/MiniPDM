@@ -8,22 +8,23 @@ import { Button } from '../components/common/ui/Button';
 import { TabFilter } from '../components/common/ui/TabFilter';
 import { Pagination } from '../components/common/ui/Pagination';
 import { Estimate } from '../types/estimate';
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 
 export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
-  // 삭제됨: Dashboard에서 처리
-  // 삭제됨: Dashboard에서 처리
   const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [loading, setLoading] = useState(true);
   const { profile } = useProfile();
+  const toast = useAppToast();
 
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = usePreservedState('estimates_filters', {
     startDate: (() => {
       const d = new Date();
       d.setMonth(d.getMonth() - 3);
       return d.toISOString().split('T')[0];
     })(),
     endDate: new Date().toISOString().split('T')[0],
-    status: 'ALL',
+    status: 'DRAFT',
     keyword: '',
     page: 1,
     pageSize: 20
@@ -53,7 +54,25 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
       if (filters.status && filters.status !== 'ALL') query = query.eq('status', filters.status);
       if (filters.startDate) query = query.gte('created_at', filters.startDate);
       if (filters.endDate) query = query.lte('created_at', `${filters.endDate}T23:59:59`);
-      if (filters.keyword) query = query.or(`project_name.ilike.%${filters.keyword}%,clients.name.ilike.%${filters.keyword}%`);
+
+      if (filters.keyword) {
+        // 거래처명 검색을 위해 클라이언트 ID 목록을 미리 조회
+        const { data: matchedClients } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('company_id', profile.company_id)
+          .ilike('name', `%${filters.keyword}%`);
+
+        const clientIds = matchedClients?.map(c => c.id) || [];
+
+        // OR 조건 구성 (현재 테이블 컬럼만 포함해야 안전함)
+        let orConditions = `project_name.ilike.%${filters.keyword}%`;
+        if (clientIds.length > 0) {
+          orConditions += `,client_id.in.(${clientIds.join(',')})`;
+        }
+
+        query = query.or(orConditions);
+      }
 
       const { data, error, count } = await query;
       if (error) {
@@ -75,34 +94,31 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
     e.stopPropagation();
 
     if (status === 'ORDERED') {
-      alert('이미 수주된 견적서는 삭제할 수 없습니다.\n먼저 수주 관리에서 해당 건을 삭제해주세요.');
+      toast.warning('이미 수주된 견적서는 삭제할 수 없습니다. 먼저 수주 관리에서 해당 건을 삭제해주세요.');
       return;
     }
 
     if (!confirm('정말 견적서를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) return;
 
     try {
-      // 1. 연결된 수주 확인 (재확인)
       const { data: orders } = await supabase.from('orders').select('id').eq('estimate_id', id);
       if (orders && orders.length > 0) {
-        alert('연결된 수주 내역이 존재하여 삭제할 수 없습니다.');
+        toast.error('연결된 수주 내역이 존재하여 삭제할 수 없습니다.');
         return;
       }
 
-      // 2. 품목 삭제 (안전성)
       await supabase.from('estimate_items').delete().eq('estimate_id', id);
 
-      // 3. 견적 삭제
       const { error } = await supabase.from('estimates').delete().eq('id', id);
 
       if (error) throw error;
 
-      alert('삭제되었습니다.');
+      toast.success('삭제되었습니다.');
       fetchEstimates();
     } catch (err) {
       console.error(err);
       const message = err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.';
-      alert('삭제 실패: ' + message);
+      toast.error('삭제 실패: ' + message);
     }
   };
 
@@ -134,10 +150,10 @@ export function Estimates({ onNavigate }: { onNavigate: (page: string, id?: stri
               <div className="w-full">
                 <TabFilter
                   options={[
-                    { label: '전체 상태', value: 'ALL' },
                     { label: '📝 작성중', value: 'DRAFT' },
                     { label: '✅ 제출완료', value: 'SENT' },
                     { label: '🚀 수주확정', value: 'ORDERED' },
+                    { label: '전체 상태', value: 'ALL' },
                   ]}
                   value={filters.status}
                   onChange={(val) => setFilters({ ...filters, status: val, page: 1 })}

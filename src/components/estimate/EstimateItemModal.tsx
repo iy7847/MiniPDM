@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { EstimateItem, Material, DIFFICULTY_FACTOR, CURRENCY_SYMBOL, INITIAL_ITEM_FORM, DEFAULT_DISCOUNT_POLICY, PostProcessing, HeatTreatment } from '../../types/estimate';
+import { EstimateItem, Material, DIFFICULTY_FACTOR, CURRENCY_SYMBOL, INITIAL_ITEM_FORM, DEFAULT_DISCOUNT_POLICY, PostProcessing, HeatTreatment, DiscountPolicy, CompanyInfo } from '../../types/estimate';
 import { MobileModal } from '../common/MobileModal';
 import { NumberInput } from '../common/NumberInput';
 import { calculateDiscountRate } from '../../utils/estimateUtils';
@@ -16,9 +16,15 @@ interface EstimateItemModalProps {
   currency: string;
   exchangeRate: number;
   editingItem: EstimateItem | null;
-  discountPolicy: any;
+  discountPolicy: DiscountPolicy | null;
   defaultHourlyRate: number;
-  companyInfo?: any; // [New] For margins
+  companyInfo?: (CompanyInfo & {
+    default_margin_w?: number;
+    default_margin_d?: number;
+    default_margin_h?: number;
+    default_margin_round_w?: number;
+    default_margin_round_d?: number;
+  }) | null;
 
   onSaveSuccess: () => void;
   onSaveFiles: (itemId: string, files: File[]) => Promise<void>;
@@ -77,6 +83,19 @@ export function EstimateItemModal({
   const [applicationRate, setApplicationRate] = useState(100);
   const currencySymbol = CURRENCY_SYMBOL[currency] || currency;
 
+  // [NEW] 소재 카테고리 분류 
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set(materials.map(m => m.category || '일반'));
+    return Array.from(cats).sort();
+  }, [materials]);
+
+  const filteredMaterials = useMemo(() => {
+    if (!selectedCategory) return materials;
+    return materials.filter(m => (m.category || '일반') === selectedCategory);
+  }, [materials, selectedCategory]);
+
   // [상태] 유사 견적
   const [similarItems, setSimilarItems] = useState<EstimateItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -100,7 +119,7 @@ export function EstimateItemModal({
     }
     const { data } = await supabase.rpc('get_material_suggestions', { search_term: term });
     if (data) {
-      setMaterialSuggestions(data.map((d: any) => d.material_name));
+      setMaterialSuggestions(data.map((d: { material_name: string }) => d.material_name));
       setShowSuggestions(true);
     }
   };
@@ -130,6 +149,19 @@ export function EstimateItemModal({
           setApplicationRate(calculateDiscountRate(discountPolicy, editingItem.difficulty, editingItem.qty));
         }
         setQtyInput(editingItem.qty.toString()); // Init qty
+
+        // [NEW] 카테고리 초기값 맞추기
+        if (editingItem.material_id) {
+          const matchedMat = materials.find(m => m.id === editingItem.material_id);
+          if (matchedMat && matchedMat.category) {
+            setSelectedCategory(matchedMat.category);
+          } else {
+            setSelectedCategory('일반');
+          }
+        } else {
+          setSelectedCategory('');
+        }
+
       } else {
         setItemForm({
           ...INITIAL_ITEM_FORM,
@@ -138,6 +170,7 @@ export function EstimateItemModal({
         const rate = calculateDiscountRate(activePolicy, INITIAL_ITEM_FORM.difficulty, INITIAL_ITEM_FORM.qty);
         setApplicationRate(rate);
         setQtyInput('1'); // Init qty
+        setSelectedCategory(''); // 리셋
       }
       setIsManualPrice(false);
       // Removed setCalcResult resets because calcResult is a useMemo derived value.
@@ -180,7 +213,7 @@ export function EstimateItemModal({
 
       if (data && data.length > 0) {
         // ID 목록으로 실제 소재 정보 매핑
-        const recIds = data.map((r: any) => r.material_id);
+        const recIds = data.map((r: { material_id: string }) => r.material_id);
         const recMats = materials.filter(m => recIds.includes(m.id));
         setRecommendedMaterials(recMats);
       } else {
@@ -212,7 +245,7 @@ export function EstimateItemModal({
 
       setIsSearching(true);
       try {
-        let matchedItems: any[] = [];
+        let matchedItems: EstimateItem[] = [];
 
         // 1. 치수 기반
         if (hasDimensions) {
@@ -410,13 +443,13 @@ export function EstimateItemModal({
     let marginH = 0;
 
     if (itemForm.shape === 'round') {
-      marginW = companyInfo?.default_margin_round_w ?? 5; // Diameter
-      marginD = companyInfo?.default_margin_round_d ?? 5; // Length
+      marginW = Number(companyInfo?.default_margin_round_w ?? 5);
+      marginD = Number(companyInfo?.default_margin_round_d ?? 5);
       marginH = 0;
     } else {
-      marginW = companyInfo?.default_margin_w ?? 5; // Width
-      marginD = companyInfo?.default_margin_d ?? 5; // Depth
-      marginH = companyInfo?.default_margin_h ?? 0; // Thickness
+      marginW = Number(companyInfo?.default_margin_w ?? 5);
+      marginD = Number(companyInfo?.default_margin_d ?? 5);
+      marginH = Number(companyInfo?.default_margin_h ?? 0);
     }
 
     if (field === 'spec_w') newItemForm.raw_w = value + (value > 0 ? marginW : 0);
@@ -687,16 +720,29 @@ export function EstimateItemModal({
 
           <div className="space-y-3 p-3 bg-blue-50 rounded border border-blue-200">
             <h4 className="text-xs font-bold text-blue-600 uppercase mb-2 border-b border-blue-200 pb-1">2. 소재비 계산</h4>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">실제 소재 (원자재)</label>
-              <select
-                className="w-full border p-2 rounded text-sm font-bold text-slate-700"
-                value={itemForm.material_id || ''}
-                onChange={e => setItemForm({ ...itemForm, material_id: e.target.value })}
-              >
-                <option value="">선택하세요</option>
-                {materials.map(m => <option key={m.id} value={m.id}>{m.code} ({m.name})</option>)}
-              </select>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 mb-1">소재 분류</label>
+                <select
+                  className="w-full border p-2 rounded text-sm font-bold text-slate-700"
+                  value={selectedCategory}
+                  onChange={e => setSelectedCategory(e.target.value)}
+                >
+                  <option value="">전체보기</option>
+                  {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 mb-1">세부 소재 선택</label>
+                <select
+                  className="w-full border p-2 rounded text-sm font-bold text-slate-700"
+                  value={itemForm.material_id || ''}
+                  onChange={e => setItemForm({ ...itemForm, material_id: e.target.value })}
+                >
+                  <option value="">선택하세요</option>
+                  {filteredMaterials.map(m => <option key={m.id} value={m.id}>{m.code} ({m.name})</option>)}
+                </select>
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -833,7 +879,14 @@ export function EstimateItemModal({
               <div className="flex gap-2 items-center">
                 <div className="w-24 shrink-0">
                   <label className="block text-xs font-bold text-red-500 mb-1">기업이윤 (%)</label>
-                  <NumberInput value={itemForm.profit_rate} onChange={v => setItemForm({ ...itemForm, profit_rate: v })} />
+                  <input
+                    type="number"
+                    step={companyInfo?.default_profit_rate_step || 1}
+                    value={itemForm.profit_rate === 0 ? '' : itemForm.profit_rate}
+                    onChange={e => setItemForm({ ...itemForm, profit_rate: parseFloat(e.target.value) || 0 })}
+                    className="w-full border p-2 rounded text-right font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="0"
+                  />
                 </div>
                 <div className="flex-1 text-right">
                   <span className="text-xs text-slate-500 block">이윤 금액</span>

@@ -61,11 +61,11 @@ export function ProductionItemRow({
                     <span className="text-[10px] text-slate-400 font-mono">{item.spec}</span>
 
                     {/* Material & Post Process Tags */}
-                    {(item.estimate_items?.materials?.name || item.estimate_items?.post_processings?.name) && (
+                    {(item.estimate_items?.materials?.name || item.estimate_items?.materials?.code || item.estimate_items?.post_processings?.name) && (
                         <div className="flex flex-wrap gap-1 mt-1">
-                            {item.estimate_items?.materials?.name && (
-                                <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[10px] text-slate-600 border border-slate-200">
-                                    {item.estimate_items.materials.name}
+                            {(item.estimate_items?.materials?.name || item.estimate_items?.materials?.code) && (
+                                <span className="px-1.5 py-0.5 bg-blue-50 rounded text-[10px] text-blue-700 font-bold border border-blue-200 shadow-sm">
+                                    {item.estimate_items.materials.code || item.estimate_items.materials.name}
                                 </span>
                             )}
                             {item.estimate_items?.post_processings?.name && item.estimate_items.post_processings.name !== '없음' && (

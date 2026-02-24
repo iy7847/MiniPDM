@@ -1,11 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { EstimateItem, CURRENCY_SYMBOL } from '../../types/estimate';
+import { EstimateItem, CURRENCY_SYMBOL, CompanyInfo, Client } from '../../types/estimate';
+
+// 견적서 템플릿에 필요한 견적 정보 타입 (헤더 + 조건 정보가 합쳐진 형태)
+interface EstimateInfo {
+  currency?: string;
+  quotation_no?: string;
+  payment_terms?: string;
+  incoterms?: string;
+  delivery_period?: string;
+  validity?: string;
+  note?: string;
+  template_type?: string;
+  [key: string]: unknown; // 추가 필드 허용 (확장성)
+}
 
 interface QuotationTemplateProps {
   ref: React.Ref<HTMLDivElement>;
-  companyInfo: any;
-  clientInfo: any;
-  estimateInfo: any;
+  companyInfo: (CompanyInfo & { ceo_name?: string; phone?: string; fax?: string; logo_path?: string; seal_path?: string }) | null | undefined;
+  clientInfo: Client | undefined;
+  estimateInfo: EstimateInfo;
   items: EstimateItem[];
   templateType?: 'A' | 'B' | 'C';
 }
@@ -15,7 +28,7 @@ const formatPhoneNumber = (value: string) => {
   if (!value) return '';
   const num = value.replace(/[^0-9]/g, '');
 
-  if (num.startsWith('02')) { 
+  if (num.startsWith('02')) {
     // 서울 (02)
     if (num.length <= 2) return num;
     if (num.length <= 5) return `${num.slice(0, 2)}-${num.slice(2)}`;
@@ -34,7 +47,7 @@ const formatPhoneNumber = (value: string) => {
 
 export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTemplateProps>((props, ref) => {
   const { companyInfo, clientInfo, estimateInfo, items, templateType = 'A' } = props;
-  
+
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const [sealSrc, setSealSrc] = useState<string | null>(null);
 
@@ -57,21 +70,21 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
   const totalAmount = items.reduce((sum, item) => sum + (item.supply_price || 0), 0);
   const today = new Date().toISOString().split('T')[0];
 
-  const containerStyle = { 
-    width: '210mm', 
-    minHeight: '297mm', 
-    padding: '15mm', 
-    backgroundColor: 'white', 
-    color: 'black', 
-    fontFamily: '"Malgun Gothic", "Dotum", Arial, sans-serif' 
+  const containerStyle = {
+    width: '210mm',
+    minHeight: '297mm',
+    padding: '15mm',
+    backgroundColor: 'white',
+    color: 'black',
+    fontFamily: '"Malgun Gothic", "Dotum", Arial, sans-serif'
   };
-  
+
   const borderClass = templateType === 'A' ? 'border-gray-300' : 'border-black';
   const headerBgClass = templateType === 'A' ? 'bg-gray-100' : 'bg-gray-200';
 
   return (
     <div ref={ref} style={containerStyle} className="mx-auto relative text-sm leading-snug">
-      
+
       {/* [Type B] 결재란 */}
       {templateType === 'B' && (
         <div className="absolute top-10 right-10 flex border border-black text-xs text-center bg-white">
@@ -116,45 +129,45 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
             </div>
           </div>
         </div>
-        
+
         <div className={`w-5/12 border ${borderClass} p-4 relative ${templateType === 'A' ? 'rounded-lg bg-gray-50 border-gray-200' : ''}`}>
-           <h3 className="text-xs font-bold text-gray-500 mb-2 border-b border-gray-300 pb-1 block">공급자 (Seller)</h3>
-           <div className="space-y-1 text-xs">
-             <div className="flex">
-               <span className="w-12 font-bold">상 호 :</span>
-               <span className="font-bold text-base">{companyInfo?.name}</span>
-             </div>
-             <div className="flex">
-               <span className="w-12 font-bold">대 표 :</span>
-               <span>{companyInfo?.ceo_name || '홍 길 동'}</span>
-             </div>
-             <div className="flex">
-               <span className="w-12 font-bold">주 소 :</span>
-               <span className="flex-1 whitespace-pre-wrap">{companyInfo?.address}</span>
-             </div>
-             <div className="flex">
-               <span className="w-12 font-bold">전 화 :</span>
-               {/* [수정] 포맷팅 함수 적용 */}
-               <span>{formatPhoneNumber(companyInfo?.phone)}</span>
-             </div>
-             <div className="flex">
-               <span className="w-12 font-bold">팩 스 :</span>
-               {/* [수정] 포맷팅 함수 적용 */}
-               <span>{formatPhoneNumber(companyInfo?.fax)}</span>
-             </div>
-             <div className="flex">
-               <span className="w-12 font-bold">이메일 :</span>
-               <span>{companyInfo?.email}</span>
-             </div>
-           </div>
-           
-           {sealSrc && (
-             <img 
-               src={sealSrc} 
-               alt="Seal" 
-               className="absolute top-8 right-4 w-16 h-16 object-contain opacity-80 mix-blend-multiply" 
-             />
-           )}
+          <h3 className="text-xs font-bold text-gray-500 mb-2 border-b border-gray-300 pb-1 block">공급자 (Seller)</h3>
+          <div className="space-y-1 text-xs">
+            <div className="flex">
+              <span className="w-12 font-bold">상 호 :</span>
+              <span className="font-bold text-base">{companyInfo?.name}</span>
+            </div>
+            <div className="flex">
+              <span className="w-12 font-bold">대 표 :</span>
+              <span>{companyInfo?.ceo_name || '홍 길 동'}</span>
+            </div>
+            <div className="flex">
+              <span className="w-12 font-bold">주 소 :</span>
+              <span className="flex-1 whitespace-pre-wrap">{companyInfo?.address}</span>
+            </div>
+            <div className="flex">
+              <span className="w-12 font-bold">전 화 :</span>
+              {/* [수정] 포맷팅 함수 적용 */}
+              <span>{formatPhoneNumber(companyInfo?.phone || '')}</span>
+            </div>
+            <div className="flex">
+              <span className="w-12 font-bold">팩 스 :</span>
+              {/* [수정] 포맷팅 함수 적용 */}
+              <span>{formatPhoneNumber(companyInfo?.fax || '')}</span>
+            </div>
+            <div className="flex">
+              <span className="w-12 font-bold">이메일 :</span>
+              <span>{companyInfo?.email}</span>
+            </div>
+          </div>
+
+          {sealSrc && (
+            <img
+              src={sealSrc}
+              alt="Seal"
+              className="absolute top-8 right-4 w-16 h-16 object-contain opacity-80 mix-blend-multiply"
+            />
+          )}
         </div>
       </div>
 
@@ -164,8 +177,8 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
         <div className={`flex justify-between items-center border-t-2 border-b-2 ${templateType === 'A' ? 'border-blue-900 bg-blue-50' : 'border-black bg-gray-100'} p-3`}>
           <span className="font-bold text-lg">합 계 금 액 (Total Amount)</span>
           <span className="font-bold text-xl">
-             {symbol} {totalAmount.toLocaleString()} 
-             <span className="text-xs font-normal ml-1">({currency === 'KRW' ? 'VAT 별도' : 'VAT Excluded'})</span>
+            {symbol} {totalAmount.toLocaleString()}
+            <span className="text-xs font-normal ml-1">({currency === 'KRW' ? 'VAT 별도' : 'VAT Excluded'})</span>
           </span>
         </div>
       </div>
@@ -202,7 +215,7 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
                 {templateType === 'C' && <td className={`border ${borderClass} text-center`}></td>}
               </tr>
             ))}
-            
+
             {/* 빈 칸 채우기 (Type B) */}
             {templateType === 'B' && items.length < 10 && Array.from({ length: 10 - items.length }).map((_, i) => (
               <tr key={`empty-${i}`} className="h-8">
@@ -235,15 +248,15 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
         <div className={`flex-1 border ${borderClass} p-3`}>
           <h3 className="font-bold mb-2 border-b border-gray-300 pb-1 text-blue-800">🏦 입금 계좌 정보 (Bank Info)</h3>
           <div className="space-y-1.5 mt-2">
-             <p><span className="inline-block w-16 font-bold text-gray-600">은행명 :</span> IBK 기업은행</p>
-             <p><span className="inline-block w-16 font-bold text-gray-600">예금주 :</span> {companyInfo?.name}</p>
-             <p><span className="inline-block w-16 font-bold text-gray-600">계좌번호 :</span> <span className="font-bold text-base">123-456-7890</span></p>
-             {currency !== 'KRW' && (
-               <>
-                 <div className="h-px bg-gray-200 my-2"></div>
-                 <p><span className="inline-block w-16 font-bold text-gray-600">Swift :</span> IBKOKRSE</p>
-               </>
-             )}
+            <p><span className="inline-block w-16 font-bold text-gray-600">은행명 :</span> IBK 기업은행</p>
+            <p><span className="inline-block w-16 font-bold text-gray-600">예금주 :</span> {companyInfo?.name}</p>
+            <p><span className="inline-block w-16 font-bold text-gray-600">계좌번호 :</span> <span className="font-bold text-base">123-456-7890</span></p>
+            {currency !== 'KRW' && (
+              <>
+                <div className="h-px bg-gray-200 my-2"></div>
+                <p><span className="inline-block w-16 font-bold text-gray-600">Swift :</span> IBKOKRSE</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -254,16 +267,16 @@ export const QuotationTemplate = React.forwardRef<HTMLDivElement, QuotationTempl
           <p className="mb-12">Accepted by Buyer</p>
           <div className="border-t border-black pt-1">Authorized Signature</div>
         </div>
-        
+
         <div className="text-center w-1/3 relative">
           <p className="mb-12">Sincerely yours,</p>
-          
+
           {/* 직인 이미지 */}
           {sealSrc && (
-            <img 
-              src={sealSrc} 
-              alt="Seal" 
-              className="absolute top-4 left-1/2 transform -translate-x-1/2 w-20 h-20 object-contain opacity-80 mix-blend-multiply" 
+            <img
+              src={sealSrc}
+              alt="Seal"
+              className="absolute top-4 left-1/2 transform -translate-x-1/2 w-20 h-20 object-contain opacity-80 mix-blend-multiply"
             />
           )}
 

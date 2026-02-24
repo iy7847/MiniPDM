@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useProfile } from '../hooks/useProfile';
 import { PageHeader } from '../components/common/ui/PageHeader';
@@ -8,15 +8,18 @@ import { Button } from '../components/common/ui/Button';
 import { NumberInput } from '../components/common/NumberInput';
 import { MobileModal } from '../components/common/MobileModal';
 import { FormattedInput } from '../components/common/FormattedInput';
+import { Combobox } from '../components/common/Combobox';
 import { Material, PostProcessing, HeatTreatment } from '../types/estimate';
-
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 export function Materials() {
-  const [activeTab, setActiveTab] = useState<'materials' | 'post-processings' | 'heat-treatments'>('materials');
+  const [activeTab, setActiveTab] = usePreservedState<'materials' | 'post-processings' | 'heat-treatments'>('materials_activeTab', 'materials');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [postProcessings, setPostProcessings] = useState<PostProcessing[]>([]);
   const [heatTreatments, setHeatTreatments] = useState<HeatTreatment[]>([]);
   const [loading, setLoading] = useState(true);
   const { profile } = useProfile();
+  const toast = useAppToast();
   const [userRole, setUserRole] = useState<string>('member');
   const [showMobileForm, setShowMobileForm] = useState(false);
 
@@ -25,7 +28,8 @@ export function Materials() {
     name: '',
     code: '',
     density: 0,
-    unit_price: 0
+    unit_price: 0,
+    category: '일반'
   });
 
   // 후처리 양식
@@ -104,35 +108,34 @@ export function Materials() {
 
   // --- 원자재 핸들러 ---
   const handleMaterialSave = async () => {
-    if (!profile?.company_id) return alert('로그인이 필요합니다.');
-    if (!form.name || !form.code) return alert('이름과 코드를 입력해주세요.');
+    if (!profile?.company_id) { toast.warning('로그인이 필요합니다.'); return; }
+    if (!form.name || !form.code) { toast.warning('이름과 코드를 입력해주세요.'); return; }
 
     if (editingMaterialId) {
-      // 수정
       const { error } = await supabase.from('materials').update({
         name: form.name,
         code: form.code,
         density: form.density,
         unit_price: form.unit_price,
+        category: form.category || '일반'
       }).eq('id', editingMaterialId);
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
-        setMaterials(materials.map(m => m.id === editingMaterialId ? { ...m, ...form } : m));
+        setMaterials(materials.map(m => m.id === editingMaterialId ? { ...m, ...form, category: form.category || '일반' } : m));
         resetMaterialForm();
       }
     } else {
-      // 삽입
       const { data, error } = await supabase.from('materials').insert([{
         company_id: profile.company_id,
         name: form.name,
         code: form.code,
         density: form.density,
         unit_price: form.unit_price,
-        category: 'GENERAL'
+        category: form.category || '일반'
       }]).select();
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
         if (data) setMaterials([...materials, ...data]);
         resetMaterialForm();
@@ -146,15 +149,18 @@ export function Materials() {
       name: m.name,
       code: m.code,
       density: m.density,
-      unit_price: m.unit_price
+      unit_price: m.unit_price,
+      category: m.category || '일반'
     });
     setEditingPpId(null); // 다른 편집 상태 초기화
     setEditingHtId(null);
-    setShowMobileForm(true); // 모달 열기
+    if (window.innerWidth < 768) {
+      setShowMobileForm(true); // 모바일에서만 모달 열기
+    }
   };
 
   const resetMaterialForm = () => {
-    setForm({ name: '', code: '', density: 0, unit_price: 0 });
+    setForm({ name: '', code: '', density: 0, unit_price: 0, category: '일반' });
     setEditingMaterialId(null);
     setShowMobileForm(false);
   };
@@ -167,30 +173,28 @@ export function Materials() {
 
   // --- 후처리 핸들러 ---
   const handlePpSave = async () => {
-    if (!profile?.company_id) return alert('로그인이 필요합니다.');
-    if (!ppForm.name) return alert('후처리명을 입력해주세요.');
+    if (!profile?.company_id) { toast.warning('로그인이 필요합니다.'); return; }
+    if (!ppForm.name) { toast.warning('후처리명을 입력해주세요.'); return; }
 
     if (editingPpId) {
-      // 수정
       const { error } = await supabase.from('post_processings').update({
         name: ppForm.name,
         price_per_kg: ppForm.price_per_kg
       }).eq('id', editingPpId);
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
         setPostProcessings(postProcessings.map(p => p.id === editingPpId ? { ...p, ...ppForm } : p));
         resetPpForm();
       }
     } else {
-      // 삽입
       const { data, error } = await supabase.from('post_processings').insert([{
         company_id: profile.company_id,
         name: ppForm.name,
         price_per_kg: ppForm.price_per_kg
       }]).select();
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
         if (data) setPostProcessings([...postProcessings, ...data]);
         resetPpForm();
@@ -205,7 +209,9 @@ export function Materials() {
       price_per_kg: p.price_per_kg
     });
     setEditingMaterialId(null);
-    setShowMobileForm(true);
+    if (window.innerWidth < 768) {
+      setShowMobileForm(true);
+    }
   };
 
   const resetPpForm = () => {
@@ -222,30 +228,28 @@ export function Materials() {
 
   // --- 열처리 핸들러 ---
   const handleHtSave = async () => {
-    if (!profile?.company_id) return alert('로그인이 필요합니다.');
-    if (!htForm.name) return alert('열처리명을 입력해주세요.');
+    if (!profile?.company_id) { toast.warning('로그인이 필요합니다.'); return; }
+    if (!htForm.name) { toast.warning('열처리명을 입력해주세요.'); return; }
 
     if (editingHtId) {
-      // 수정
       const { error } = await supabase.from('heat_treatments').update({
         name: htForm.name,
         price_per_kg: htForm.price_per_kg
       }).eq('id', editingHtId);
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
         setHeatTreatments(heatTreatments.map(h => h.id === editingHtId ? { ...h, ...htForm } : h));
         resetHtForm();
       }
     } else {
-      // 삽입
       const { data, error } = await supabase.from('heat_treatments').insert([{
         company_id: profile.company_id,
         name: htForm.name,
         price_per_kg: htForm.price_per_kg
       }]).select();
 
-      if (error) alert(error.message);
+      if (error) toast.error(error.message);
       else {
         if (data) setHeatTreatments([...heatTreatments, ...data]);
         resetHtForm();
@@ -261,7 +265,9 @@ export function Materials() {
     });
     setEditingMaterialId(null);
     setEditingPpId(null);
-    setShowMobileForm(true);
+    if (window.innerWidth < 768) {
+      setShowMobileForm(true);
+    }
   };
 
   const resetHtForm = () => {
@@ -275,6 +281,13 @@ export function Materials() {
     await supabase.from('heat_treatments').delete().eq('id', id);
     setHeatTreatments(heatTreatments.filter(h => h.id !== id));
   };
+
+  const groupedMaterials = materials.reduce((acc, current) => {
+    const cat = current.category || '일반';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(current);
+    return acc;
+  }, {} as Record<string, Material[]>);
 
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
@@ -347,35 +360,44 @@ export function Materials() {
                         ) : materials.length === 0 ? (
                           <tr><td colSpan={5} className="p-8 text-center text-slate-400">등록된 원자재가 없습니다.</td></tr>
                         ) : (
-                          materials.map(m => (
-                            <tr key={m.id} className="border-b hover:bg-slate-50 last:border-0">
-                              <td className="p-3 text-sm font-bold text-slate-700">{m.code}</td>
-                              <td className="p-3 text-sm text-slate-600">{m.name}</td>
-                              <td className="p-3 text-sm text-right text-slate-600">{m.density}</td>
-                              <td className="p-3 text-sm text-right text-blue-600 font-bold">₩{m.unit_price.toLocaleString()}</td>
-                              {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
-                                <td className="p-3 text-right">
-                                  <div className="flex justify-end gap-2">
-                                    <Button
-                                      variant="secondary"
-                                      size="sm"
-                                      onClick={() => handleMaterialEdit(m)}
-                                      className="h-[28px] opacity-70 hover:opacity-100"
-                                    >
-                                      ✏️
-                                    </Button>
-                                    <Button
-                                      variant="danger"
-                                      size="sm"
-                                      onClick={() => handleMaterialDelete(m.id)}
-                                      className="h-[28px] opacity-70 hover:opacity-100"
-                                    >
-                                      🗑️
-                                    </Button>
-                                  </div>
+                          Object.entries(groupedMaterials).map(([category, items]) => (
+                            <Fragment key={category}>
+                              <tr className="bg-slate-100/80 border-b">
+                                <td colSpan={5} className="p-2 px-3 text-sm font-black text-slate-700 bg-brand-50/30">
+                                  {category} <span className="text-xs font-normal text-slate-500 ml-2">({items.length}개)</span>
                                 </td>
-                              )}
-                            </tr>
+                              </tr>
+                              {items.map(m => (
+                                <tr key={m.id} className="border-b hover:bg-slate-50 last:border-0 pl-2">
+                                  <td className="p-3 pl-5 text-sm font-bold text-slate-700 border-l-2 border-transparent hover:border-brand-500 transition-colors">{m.code}</td>
+                                  <td className="p-3 text-sm text-slate-600">{m.name}</td>
+                                  <td className="p-3 text-sm text-right text-slate-600">{m.density}</td>
+                                  <td className="p-3 text-sm text-right text-blue-600 font-bold">₩{m.unit_price.toLocaleString()}</td>
+                                  {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
+                                    <td className="p-3 text-right">
+                                      <div className="flex justify-end gap-2">
+                                        <Button
+                                          variant="secondary"
+                                          size="sm"
+                                          onClick={() => handleMaterialEdit(m)}
+                                          className="h-[28px] opacity-70 hover:opacity-100"
+                                        >
+                                          ✏️
+                                        </Button>
+                                        <Button
+                                          variant="danger"
+                                          size="sm"
+                                          onClick={() => handleMaterialDelete(m.id)}
+                                          className="h-[28px] opacity-70 hover:opacity-100"
+                                        >
+                                          🗑️
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </Fragment>
                           ))
                         )}
                       </tbody>
@@ -389,6 +411,7 @@ export function Materials() {
                 <Section title="새 원자재 등록" className="hidden md:block w-80 shrink-0">
                   <Card>
                     <div className="space-y-4">
+                      <div><Combobox label="카테고리 (예: 스틸, AL)" value={form.category} onChange={v => setForm({ ...form, category: v })} options={Object.keys(groupedMaterials)} /></div>
                       <div><FormattedInput label="원자재 코드 (예: AL6061)" value={form.code} onChange={v => setForm({ ...form, code: v })} /></div>
                       <div><FormattedInput label="재질 상세명" value={form.name} onChange={v => setForm({ ...form, name: v })} /></div>
                       <div><NumberInput label="비중 (g/cm³)" value={form.density} onChange={v => setForm({ ...form, density: v })} /></div>
@@ -571,6 +594,7 @@ export function Materials() {
           <div className="space-y-4">
             {activeTab === 'materials' ? (
               <>
+                <div><Combobox label="카테고리" value={form.category} onChange={v => setForm({ ...form, category: v })} options={Object.keys(groupedMaterials)} /></div>
                 <div><FormattedInput label="코드" value={form.code} onChange={v => setForm({ ...form, code: v })} /></div>
                 <div><FormattedInput label="재질명" value={form.name} onChange={v => setForm({ ...form, name: v })} /></div>
                 <div><NumberInput label="비중" value={form.density} onChange={v => setForm({ ...form, density: v })} /></div>

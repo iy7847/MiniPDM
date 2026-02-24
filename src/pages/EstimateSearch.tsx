@@ -7,7 +7,8 @@ import { useProfile } from '../hooks/useProfile';
 import { useFileHandler } from '../hooks/useFileHandler';
 import { EstimateItemModal } from '../components/estimate/EstimateItemModal';
 import { TabFilter } from '../components/common/ui/TabFilter';
-
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 type SearchResultItem = EstimateItem & {
     estimate?: {
         id: string;
@@ -43,6 +44,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?: string | null) => void }) {
     const { profile } = useProfile();
+    const toast = useAppToast();
     const [_loading, setLoading] = useState(false);
     const [results, setResults] = useState<SearchResultItem[]>([]);
 
@@ -60,14 +62,14 @@ export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?:
     const [selectedItem, setSelectedItem] = useState<SearchResultItem | null>(null);
 
     // Search Criteria
-    const [keyword, setKeyword] = useState(''); // Part Name / No
-    const [noteKeyword, setNoteKeyword] = useState(''); // Note
-    const [statusFilter, setStatusFilter] = useState('ALL'); // Status
+    const [keyword, setKeyword] = usePreservedState('estimate_search_keyword', ''); // Part Name / No
+    const [noteKeyword, setNoteKeyword] = usePreservedState('estimate_search_noteKeyword', ''); // Note
+    const [statusFilter, setStatusFilter] = usePreservedState('estimate_search_statusFilter', 'ALL'); // Status
 
-    const [sizeW, setSizeW] = useState<string>('');
-    const [sizeD, setSizeD] = useState<string>('');
-    const [sizeH, setSizeH] = useState<string>('');
-    const [tolerance, setTolerance] = useState<number>(0);
+    const [sizeW, setSizeW] = usePreservedState<string>('estimate_search_sizeW', '');
+    const [sizeD, setSizeD] = usePreservedState<string>('estimate_search_sizeD', '');
+    const [sizeH, setSizeH] = usePreservedState<string>('estimate_search_sizeH', '');
+    const [tolerance, setTolerance] = usePreservedState<number>('estimate_search_tolerance', 0);
 
     useEffect(() => {
         if (profile?.company_id) {
@@ -169,7 +171,7 @@ export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?:
 
         } catch (error) {
             console.error('Search error:', error);
-            alert('검색 중 오류가 발생했습니다.');
+            toast.error('검색 중 오류가 발생했습니다.');
         } finally {
             setLoading(false);
         }
@@ -189,12 +191,12 @@ export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?:
     const handleFileClick = async (e: React.MouseEvent, filePath: string) => {
         e.stopPropagation();
         if (!companyRootPath) {
-            alert('회사 경로 설정이 로드되지 않았습니다.');
+            toast.warning('회사 경로 설정이 로드되지 않았습니다.');
             return;
         }
         const result = await openFile(filePath);
         if (!result?.success) {
-            alert('파일을 열 수 없습니다:\n' + (result?.error || '알 수 없는 오류'));
+            toast.error('파일을 열 수 없습니다: ' + (result?.error || '알 수 없는 오류'));
         }
     };
 
@@ -215,10 +217,10 @@ export function EstimateSearch({ onNavigate }: { onNavigate: (page: string, id?:
                         <div>
                             <TabFilter
                                 options={[
-                                    { label: '전체', value: 'ALL' },
                                     { label: '📝 작성중', value: 'DRAFT' },
                                     { label: '✅ 제출완료', value: 'SENT' },
                                     { label: '🚀 수주확정', value: 'ORDERED' },
+                                    { label: '전체상태', value: 'ALL' },
                                 ]}
                                 value={statusFilter}
                                 onChange={(val) => setStatusFilter(val)}

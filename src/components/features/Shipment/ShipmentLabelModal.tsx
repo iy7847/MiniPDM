@@ -4,10 +4,22 @@ import Barcode from 'react-barcode';
 import { useReactToPrint } from 'react-to-print';
 import { MobileModal } from '../../common/MobileModal';
 
+interface ShipmentLabelItem {
+    part_name: string;
+    part_no: string;
+    qty: number;
+}
+
+interface LabelItem extends ShipmentLabelItem {
+    labelQty: number;
+    displayIndex: number | null;
+    totalIndex: number | null;
+}
+
 interface ShipmentLabelModalProps {
     isOpen: boolean;
     onClose: () => void;
-    items: any[]; // Shipment items with order_items details
+    items: ShipmentLabelItem[];
 }
 
 export function ShipmentLabelModal({ isOpen, onClose, items }: ShipmentLabelModalProps) {
@@ -51,7 +63,7 @@ export function ShipmentLabelModal({ isOpen, onClose, items }: ShipmentLabelModa
         }
 
         // Split items by quantity
-        const expandedItems: any[] = [];
+        const expandedItems: LabelItem[] = [];
         items.forEach(item => {
             const qty = item.qty || 1;
             for (let i = 1; i <= qty; i++) {

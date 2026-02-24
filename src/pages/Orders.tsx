@@ -8,6 +8,8 @@ import { Button } from '../components/common/ui/Button';
 import { TabFilter } from '../components/common/ui/TabFilter';
 import { Pagination } from '../components/common/ui/Pagination';
 import { Order } from '../types/order';
+import { useAppToast } from '../contexts/ToastContext';
+import { usePreservedState } from '../hooks/usePreservedState';
 
 interface OrderWithClient extends Order {
     clients?: { name: string };
@@ -17,15 +19,16 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
     const [orders, setOrders] = useState<OrderWithClient[]>([]);
     const [loading, setLoading] = useState(true);
     const { profile } = useProfile();
+    const toast = useAppToast();
 
-    const [filters, setFilters] = useState({
+    const [filters, setFilters] = usePreservedState('orders_filters', {
         startDate: (() => {
             const d = new Date();
             d.setMonth(d.getMonth() - 3);
             return d.toISOString().split('T')[0];
         })(),
         endDate: new Date().toISOString().split('T')[0],
-        status: 'ALL',
+        status: 'ORDERED',
         keyword: '',
         page: 1,
         pageSize: 20
@@ -114,12 +117,12 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                     .eq('id', estimateId);
             }
 
-            alert('삭제되었습니다.');
+            toast.success('삭제되었습니다.');
             fetchOrders();
         } catch (error) {
             console.error('삭제 중 오류:', error);
             const message = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
-            alert('삭제 실패: ' + message);
+            toast.error('삭제 실패: ' + message);
         }
     };
 
@@ -149,10 +152,10 @@ export function Orders({ onNavigate }: { onNavigate: (page: string, id?: string 
                             <div className="w-full">
                                 <TabFilter
                                     options={[
-                                        { label: '전체 상태', value: 'ALL' },
                                         { label: '🚀 수주접수', value: 'ORDERED' },
                                         { label: '⚙️ 생산중', value: 'PRODUCTION' },
                                         { label: '📦 출고완료', value: 'DONE' },
+                                        { label: '전체 상태', value: 'ALL' },
                                     ]}
                                     value={filters.status}
                                     onChange={(val) => setFilters({ ...filters, status: val, page: 1 })}

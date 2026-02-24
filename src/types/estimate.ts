@@ -1,7 +1,7 @@
 // 견적 관련 공통 타입 및 상수 정의
 
 export type Client = { id: string; name: string; currency: string; };
-export type Material = { id: string; name: string; code: string; density: number; unit_price: number; };
+export type Material = { id: string; name: string; code: string; density: number; unit_price: number; category?: string; };
 export type PostProcessing = { id: string; name: string; price_per_kg: number; };
 
 export type HeatTreatment = { id: string; name: string; price_per_kg: number; }; // [NEW]
@@ -31,6 +31,7 @@ export type CompanyInfo = {
   default_exchange_rate?: number;
   default_hourly_rate?: number;
   default_time_step?: number;
+  default_profit_rate_step?: number;
   discount_policy_json?: Record<string, number[]>;
   default_rounding_unit?: number;
   quotation_template_type?: string;
@@ -57,7 +58,15 @@ export type Estimate = {
   clients?: { name: string };
 };
 
-export type DiscountPolicy = Record<string, number[]>;
+export type LegacyDiscountPolicy = Record<string, number[]>;
+
+export type DynamicDiscountPolicy = {
+  quantities: number[];
+  rates: Record<string, number[]>;
+};
+
+// 백워드 호환성을 위해 유니온 타입 사용
+export type DiscountPolicy = LegacyDiscountPolicy | DynamicDiscountPolicy;
 
 export type EstimateItem = {
   id?: string;

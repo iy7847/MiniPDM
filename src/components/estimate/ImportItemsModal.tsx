@@ -1,14 +1,26 @@
 import React, { useState } from 'react';
 import { MobileModal } from '../common/MobileModal';
 
+interface ImportedItem {
+    part_name: string;
+    spec?: string;
+    drawing_number?: string;
+    qty: number;
+    unit_price: number;
+    original_material_name?: string;
+    material_text?: string;
+    post_process_text?: string;
+    heat_treatment_text?: string;
+}
+
 interface ImportItemsModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (items: any[]) => void;
+    onConfirm: (items: ImportedItem[]) => void;
 }
 
 export function ImportItemsModal({ isOpen, onClose, onConfirm }: ImportItemsModalProps) {
-    const [previewItems, setPreviewItems] = useState<any[]>([]);
+    const [previewItems, setPreviewItems] = useState<ImportedItem[]>([]);
     const [rawRows, setRawRows] = useState<string[][]>([]);
     const [columnMapping, setColumnMapping] = useState<Record<number, string>>({});
 
@@ -98,20 +110,20 @@ export function ImportItemsModal({ isOpen, onClose, onConfirm }: ImportItemsModa
             return;
         }
         const items = rows.map(row => {
-            const item: any = {};
+            const raw: Record<string, string | number> = {};
             Object.entries(mapping).forEach(([colIdx, field]) => {
                 const val = row[parseInt(colIdx)];
                 if (field === 'qty' || field === 'unit_price') {
-                    item[field] = parseInt(val?.replace(/[^0-9]/g, '') || '0');
+                    raw[field] = parseInt(val?.replace(/[^0-9]/g, '') || '0');
                 } else {
-                    item[field] = val;
+                    raw[field] = val;
                 }
             });
-            if (!item.part_name) return null;
-            if (!item.qty) item.qty = 1;
-            if (!item.unit_price) item.unit_price = 0;
-            return item;
-        }).filter(x => x !== null);
+            if (!raw['part_name']) return null;
+            if (!raw['qty']) raw['qty'] = 1;
+            if (!raw['unit_price']) raw['unit_price'] = 0;
+            return raw as unknown as ImportedItem;
+        }).filter((x): x is ImportedItem => x !== null);
         setPreviewItems(items);
     };
 

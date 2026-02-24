@@ -7,12 +7,14 @@ import { Button } from '../components/common/ui/Button';
 import { FormattedInput } from '../components/common/FormattedInput';
 import { NumberInput } from '../components/common/NumberInput';
 import { DiscountPolicyChart, DEFAULT_POLICY } from '../components/settings/DiscountPolicyChart';
-import { ExcelExportPreset, EXCEL_AVAILABLE_COLUMNS } from '../types/estimate';
-import { UserManagement } from '../components/features/UserManagement'; // UserManagement 구현체
+import { ExcelExportPreset, EXCEL_AVAILABLE_COLUMNS, DiscountPolicy } from '../types/estimate';
+import { UserManagement } from '../components/features/UserManagement';
+import { useAppToast } from '../contexts/ToastContext';
 
 export function Settings() {
-  const { profile } = useProfile(); // 프로필 정보 가져오기
+  const { profile } = useProfile();
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
+  const toast = useAppToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,7 @@ export function Settings() {
     default_margin_round_d: 5, // [신규]
     default_rounding_unit: 1000,
     default_time_step: 0.1,
+    default_profit_rate_step: 1,
   });
 
   const [excelPresets, setExcelPresets] = useState<ExcelExportPreset[]>([]);
@@ -112,6 +115,7 @@ export function Settings() {
             default_margin_round_d: company.default_margin_round_d !== null ? company.default_margin_round_d : 5, // [신규]
             default_rounding_unit: company.default_rounding_unit || 1000,
             default_time_step: company.default_time_step || 0.1,
+            default_profit_rate_step: company.default_profit_rate_step || 1,
           });
         }
 
@@ -163,6 +167,7 @@ export function Settings() {
           default_margin_round_d: form.default_margin_round_d, // [신규]
           default_rounding_unit: form.default_rounding_unit,
           default_time_step: form.default_time_step,
+          default_profit_rate_step: form.default_profit_rate_step,
           updated_at: new Date().toISOString()
         })
         .eq('id', companyId);
@@ -179,14 +184,14 @@ export function Settings() {
   };
 
   const handleAddPreset = async () => {
-    if (!newPresetName.trim()) return alert('프리셋 이름을 입력하세요.');
+    if (!newPresetName.trim()) { toast.warning('프리셋 이름을 입력하세요.'); return; }
     const { error } = await supabase.from('excel_export_presets').insert({
       company_id: companyId,
       name: newPresetName,
       columns: ['part_no', 'part_name', 'qty', 'unit_price', 'supply_price']
     });
 
-    if (error) alert('추가 실패: ' + error.message);
+    if (error) toast.error('추가 실패: ' + error.message);
     else {
       setNewPresetName('');
       fetchCompanyInfo();
@@ -246,7 +251,7 @@ export function Settings() {
     setDraggedItemIndex(null);
   };
 
-  const handlePolicyChange = (newPolicy: Record<string, number[]>) => {
+  const handlePolicyChange = (newPolicy: DiscountPolicy) => {
     setForm(prev => ({ ...prev, discount_policy: newPolicy as any }));
   };
 
@@ -378,31 +383,35 @@ export function Settings() {
                     </div>
                   </Card>
 
-                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden bg-brand-600 text-white">
-                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-brand-500/30">
-                      <span className="p-2 bg-white/10 rounded-xl text-lg">💰</span>
-                      <h3 className="font-black text-white uppercase tracking-tight">재무 및 산정 기준</h3>
+                  <Card className="shadow-soft rounded-3xl border-0 overflow-hidden bg-white">
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-indigo-50">
+                      <span className="p-2 bg-indigo-50 rounded-xl text-lg">💰</span>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">환율 및 임율</h3>
                     </div>
                     <div className="space-y-6">
-                      <div className="bg-white/10 p-5 rounded-2xl border border-white/10">
-                        <label className="block text-[10px] font-black text-white/60 uppercase tracking-widest mb-2">기본 적용 환율 (USD/KRW)</label>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xl font-black text-white/50">$ 1 =</span>
-                          <NumberInput
-                            value={form.default_exchange_rate}
-                            onChange={(val) => updateForm('default_exchange_rate', val)}
-                            className="bg-transparent border-white/20 text-white text-2xl font-black focus:ring-white/20"
-                          />
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">기본 적용 환율 (USD/KRW)</label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-slate-500">$ 1 =</span>
+                          <div className="flex-1">
+                            <NumberInput
+                              value={form.default_exchange_rate}
+                              onChange={(val) => updateForm('default_exchange_rate', val)}
+                              className="bg-white border-slate-200 text-slate-700 text-sm font-bold focus:ring-brand-100 w-full rounded-2xl p-3"
+                            />
+                          </div>
                         </div>
                       </div>
 
-                      <div className="bg-white/10 p-5 rounded-2xl border border-white/10">
-                        <label className="block text-[10px] font-black text-white/60 uppercase tracking-widest mb-2">작업 임율 (Hourly Rate, ₩/hr)</label>
-                        <NumberInput
-                          value={form.default_hourly_rate}
-                          onChange={(val) => updateForm('default_hourly_rate', val)}
-                          className="bg-transparent border-white/20 text-white text-2xl font-black focus:ring-white/20"
-                        />
+                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">작업 임율 (Hourly Rate, ₩/hr)</label>
+                        <div className="w-full">
+                          <NumberInput
+                            value={form.default_hourly_rate}
+                            onChange={(val) => updateForm('default_hourly_rate', val)}
+                            className="bg-white border-slate-200 text-slate-700 text-sm font-bold focus:ring-brand-100 w-full rounded-2xl p-3"
+                          />
+                        </div>
                       </div>
                     </div>
                   </Card>
@@ -412,7 +421,7 @@ export function Settings() {
                   <Card className="shadow-soft rounded-3xl border-0 overflow-hidden">
                     <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-50">
                       <span className="p-2 bg-blue-50 rounded-xl text-lg">📁</span>
-                      <h3 className="font-black text-slate-700 uppercase tracking-tight">저장소 및 프린터 (Storage & Print)</h3>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">파일 저장 경로 및 라벨 설정</h3>
                     </div>
                     <div className="space-y-6">
                       <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
@@ -459,11 +468,11 @@ export function Settings() {
                   <Card className="shadow-soft rounded-3xl border-0 overflow-hidden">
                     <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-50">
                       <span className="p-2 bg-emerald-50 rounded-xl text-lg">📐</span>
-                      <h3 className="font-black text-slate-700 uppercase tracking-tight">자재 마진 및 산출 (Calculation)</h3>
+                      <h3 className="font-black text-slate-700 uppercase tracking-tight">단위 및 소재 여유 사이즈 설정</h3>
                     </div>
 
                     <div className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">단가 절사 단위</label>
                           <select
@@ -471,22 +480,36 @@ export function Settings() {
                             value={form.default_rounding_unit}
                             onChange={(e) => updateForm('default_rounding_unit', parseInt(e.target.value))}
                           >
-                            <option value="1">1원 단위</option>
-                            <option value="10">10원 단위</option>
-                            <option value="100">100원 단위</option>
-                            <option value="1000">1000원 단위</option>
+                            <option value="1">1원</option>
+                            <option value="10">10원</option>
+                            <option value="100">100원</option>
+                            <option value="1000">1000원</option>
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">시간 절사 단위</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">시간 증감 단위</label>
                           <select
                             className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-brand-50"
                             value={form.default_time_step}
                             onChange={(e) => updateForm('default_time_step', parseFloat(e.target.value))}
                           >
-                            <option value="1">1.0</option>
-                            <option value="0.1">0.1</option>
-                            <option value="0.01">0.01</option>
+                            <option value="1">1.0h</option>
+                            <option value="0.1">0.1h</option>
+                            <option value="0.01">0.01h</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">이윤(%) 증감 단위</label>
+                          <select
+                            className="w-full border border-slate-200 p-3 rounded-2xl text-sm font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-brand-50"
+                            value={form.default_profit_rate_step || 1}
+                            onChange={(e) => updateForm('default_profit_rate_step', parseFloat(e.target.value))}
+                          >
+                            <option value="0.01">0.01%</option>
+                            <option value="0.1">0.1%</option>
+                            <option value="1">1%</option>
+                            <option value="5">5%</option>
+                            <option value="10">10%</option>
                           </select>
                         </div>
                       </div>
