@@ -408,7 +408,7 @@ export function Materials() {
 
               {/* Desktop Side Form */}
               {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
-                <Section title="새 원자재 등록" className="hidden md:block w-80 shrink-0">
+                <Section title="새 원자재 등록" className="hidden md:block w-80 shrink-0 sticky top-4">
                   <Card>
                     <div className="space-y-4">
                       <div><Combobox label="카테고리 (예: 스틸, AL)" value={form.category} onChange={v => setForm({ ...form, category: v })} options={Object.keys(groupedMaterials)} /></div>
@@ -489,7 +489,7 @@ export function Materials() {
 
               {/* Desktop Side Form */}
               {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
-                <Section title="새 후처리 등록" className="hidden md:block w-80 shrink-0">
+                <Section title="새 후처리 등록" className="hidden md:block w-80 shrink-0 sticky top-4">
                   <Card>
                     <div className="space-y-4">
                       <div><FormattedInput label="후처리명 (예: 아노다이징)" value={ppForm.name} onChange={v => setPpForm({ ...ppForm, name: v })} /></div>
@@ -567,7 +567,7 @@ export function Materials() {
 
               {/* Desktop Side Form */}
               {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manager') && (
-                <Section title="새 열처리 등록" className="hidden md:block w-80 shrink-0">
+                <Section title="새 열처리 등록" className="hidden md:block w-80 shrink-0 sticky top-4">
                   <Card>
                     <div className="space-y-4">
                       <div><FormattedInput label="열처리명 (예: 진공열처리)" value={htForm.name} onChange={v => setHtForm({ ...htForm, name: v })} /></div>

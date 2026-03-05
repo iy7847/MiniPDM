@@ -467,7 +467,8 @@ export function EstimateItemModal({
     // Parse quantity input string "10/20/30"
     const quantities = qtyInput.split('/')
       .map(q => parseInt(q.trim().replace(/,/g, ''), 10))
-      .filter(n => !isNaN(n) && n > 0);
+      .filter(n => !isNaN(n) && n > 0)
+      .sort((a, b) => a - b);
 
     if (quantities.length === 0) {
       return alert('유효한 수량을 입력해주세요.');
@@ -883,7 +884,11 @@ export function EstimateItemModal({
                     type="number"
                     step={companyInfo?.default_profit_rate_step || 1}
                     value={itemForm.profit_rate === 0 ? '' : itemForm.profit_rate}
-                    onChange={e => setItemForm({ ...itemForm, profit_rate: parseFloat(e.target.value) || 0 })}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '' || val === '-') setItemForm({ ...itemForm, profit_rate: val as any });
+                      else setItemForm({ ...itemForm, profit_rate: parseFloat(val) || 0 });
+                    }}
                     className="w-full border p-2 rounded text-right font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="0"
                   />

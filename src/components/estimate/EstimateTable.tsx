@@ -244,7 +244,14 @@ export function EstimateTable(props: EstimateTableProps) {
                           type="number"
                           step={profitStep}
                           value={item.profit_rate || 0}
-                          onChange={(e) => onUpdateItem(item.id!, { profit_rate: parseFloat(e.target.value) })}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '' || val === '-') {
+                              onUpdateItem(item.id!, { profit_rate: val as any });
+                            } else {
+                              onUpdateItem(item.id!, { profit_rate: parseFloat(val) });
+                            }
+                          }}
                           className="w-12 p-1.5 text-right text-xs font-black border-none rounded-lg focus:ring-2 focus:ring-orange-200 outline-none bg-orange-50/50 text-orange-600 transition-all disabled:opacity-70"
                           disabled={isLocked}
                         />

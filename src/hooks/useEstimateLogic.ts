@@ -52,7 +52,8 @@ export function useEstimateLogic(estimateId: string | null) {
       .from('estimate_items')
       .select('*, files(id, file_name, file_type, file_path)')
       .eq('estimate_id', estId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .order('qty', { ascending: true });
 
     if (error) console.error(error);
 
